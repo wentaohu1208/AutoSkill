@@ -2,6 +2,11 @@
 
 English | [中文](README.zh-CN.md)
 
+[![Maintained By](https://img.shields.io/badge/Maintained%20By-ICALK-0A66C2)](https://github.com/ECNU-ICALK/AutoSkill)
+[![arXiv](https://img.shields.io/badge/arXiv-2603.01145-b31b1b.svg)](https://arxiv.org/abs/2603.01145)
+[![GitHub](https://img.shields.io/badge/GitHub-ECNU--ICALK%2FAutoSkill-181717?logo=github)](https://github.com/ECNU-ICALK/AutoSkill)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 <p align="center">
   <img src="imgs/AutoSkill_logo.png" alt="AutoSkill Logo" width="320" />
 </p>
@@ -725,6 +730,16 @@ If you use AutoSkill in academic work, technical reports, or demos, please cite:
   year = {2026},
   url = {https://github.com/ECNU-ICALK/AutoSkill},
   note = {GitHub repository}
+}
+
+@misc{yang2026autoskillexperiencedrivenlifelonglearning,
+  title={AutoSkill: Experience-Driven Lifelong Learning via Skill Self-Evolution},
+  author={Yutao Yang and Junsong Li and Qianjun Pan and Bihao Zhan and Yuxuan Cai and Lin Du and Jie Zhou and Kai Chen and Qin Chen and Xin Li and Bo Zhang and Liang He},
+  year={2026},
+  eprint={2603.01145},
+  archivePrefix={arXiv},
+  primaryClass={cs.AI},
+  url={https://arxiv.org/abs/2603.01145},
 }
 ```
 
