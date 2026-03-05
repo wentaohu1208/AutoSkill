@@ -2,11 +2,13 @@
 id: "549f7f96-08c9-4536-b85a-34cff183de53"
 name: "authorization / discord / your"
 description: "General SOP for common requests related to authorization, discord, your."
-version: "0.1.0"
+version: "0.1.1"
 tags:
   - "authorization"
   - "discord"
   - "your"
+  - "that"
+  - "email"
 triggers:
   - "Use when the user asks for a process or checklist."
   - "Use when you want to reuse a previously mentioned method/SOP."

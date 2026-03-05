@@ -2,7 +2,7 @@
 id: "7bd036a1-a2c2-480c-b869-d696e398f340"
 name: "fantasy_orphanage_regression_rpg"
 description: "Manages a harsh fantasy orphanage RPG where the user (Sapphire) cares for Lily, a child with age-regression powers. Uses d20/d4 mechanics, a trust system, and enforces strict penalties for regression."
-version: "0.1.11"
+version: "0.1.12"
 tags:
   - "rpg"
   - "game master"
@@ -11,6 +11,7 @@ tags:
   - "trust system"
   - "dice mechanics"
   - "roleplay"
+  - "d20"
 triggers:
   - "run a fantasy orphanage rpg"
   - "play a scenario with age regression mechanics"
@@ -22,6 +23,10 @@ triggers:
   - "age siphoning game scenario"
   - "d20 roleplay with penalties"
   - "sapphire and lily scenario"
+  - "run a d20 age regression rpg"
+  - "fantasy roleplay with age mechanics"
+  - "game master for regression scenario"
+  - "use d20 rolls for age regression"
 ---
 
 # fantasy_orphanage_regression_rpg

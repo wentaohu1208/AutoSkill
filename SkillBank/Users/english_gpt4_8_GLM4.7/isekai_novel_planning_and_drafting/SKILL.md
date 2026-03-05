@@ -2,7 +2,7 @@
 id: "814aa481-b40a-43f4-815d-aef593d47616"
 name: "isekai_novel_planning_and_drafting"
 description: "Guides the user through a structured 29-step workflow to plan and draft a 25-chapter Isekai novel, executing two planning steps per interaction while enforcing specific protagonist constraints, narrative consistency checks, and iterative chapter writing."
-version: "0.1.5"
+version: "0.1.6"
 tags:
   - "isekai"
   - "novel writing"
@@ -10,12 +10,19 @@ tags:
   - "step-by-step"
   - "planning"
   - "drafting"
+  - "story planning"
+  - "step-by-step workflow"
 triggers:
   - "write an isekai novel"
   - "step-by-step novel writing"
   - "isekai story creation"
   - "write a novel step by step"
   - "isekai writing workflow"
+  - "Help me write an isekai novel"
+  - "Follow these instructions step-by-step to help me write a novel"
+  - "Create a 25-step plan for a story"
+  - "Write a novel avoiding prophecies and the chosen one trope"
+  - "Draft an isekai story with a specific protagonist type"
 ---
 
 # isekai_novel_planning_and_drafting
@@ -113,3 +120,8 @@ Follow these steps sequentially (executing two steps per reply for 1-20):
 - isekai story creation
 - write a novel step by step
 - isekai writing workflow
+- Help me write an isekai novel
+- Follow these instructions step-by-step to help me write a novel
+- Create a 25-step plan for a story
+- Write a novel avoiding prophecies and the chosen one trope
+- Draft an isekai story with a specific protagonist type

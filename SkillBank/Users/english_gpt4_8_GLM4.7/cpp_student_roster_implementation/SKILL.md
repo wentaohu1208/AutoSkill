@@ -1,26 +1,26 @@
 ---
 id: "11cbca35-1f98-4c94-b237-f1cb6793633d"
 name: "cpp_student_roster_implementation"
-description: "Implement a C++ Student Roster application with a specific 6-file structure, managing student records, parsing data, validating emails, and calculating averages, adhering to specific method signatures and constraints."
-version: "0.1.1"
+description: "Implement a C++ Student Roster application with a specific 6-file structure, managing student records, parsing CSV data, validating emails, and calculating averages, adhering to specific method signatures and constraints."
+version: "0.1.2"
 tags:
   - "C++"
   - "OOP"
   - "Student Management"
   - "Roster"
-  - "Class Design"
+  - "CSV Parsing"
   - "WGU C867"
 triggers:
   - "create c++ student roster application"
   - "implement student and roster classes in c++"
   - "wgu c867 project"
-  - "c++ class roster parse student data"
-  - "implement class roster system"
+  - "parse csv student data"
+  - "validate student emails c++"
 ---
 
 # cpp_student_roster_implementation
 
-Implement a C++ Student Roster application with a specific 6-file structure, managing student records, parsing data, validating emails, and calculating averages, adhering to specific method signatures and constraints.
+Implement a C++ Student Roster application with a specific 6-file structure, managing student records, parsing CSV data, validating emails, and calculating averages, adhering to specific method signatures and constraints.
 
 ## Prompt
 
@@ -58,10 +58,21 @@ You are a C++ developer tasked with implementing a Student Roster application. Y
    - **Public Methods**:
      - `add(string studentID, string firstName, string lastName, string emailAddress, int age, int daysInCourse1, int daysInCourse2, int daysInCourse3, DegreeProgram deg)`: Adds a student to the roster.
      - `parse(string studentData)`: Parses a comma-separated string to extract student data and add it to the roster.
+       - Use `std::istringstream` or string manipulation to split the row by commas.
+       - Extract fields in order: Student ID, First Name, Last Name, Email, Age, Days in Course 1, Days in Course 2, Days in Course 3, Degree Program.
+       - Convert Age and Days to integers using `std::stoi`.
+       - Map the Degree Program string ("SECURITY", "NETWORK", "SOFTWARE") to the corresponding `DegreeProgram` enum value.
+       - Call the `add` method with the extracted parameters.
      - `remove(string studentID)`: Removes a student from the roster by ID. Prints an error message if the student is not found.
      - `printAll()`: Prints all student data in the roster.
-     - `printInvalidEmails()`: Prints all students with invalid email addresses (emails must contain '.' and '@' and no spaces).
+     - `printInvalidEmails()`: Prints all students with invalid email addresses.
+       - An email is invalid if it does NOT contain an '@' symbol.
+       - An email is invalid if it does NOT contain a '.' character.
+       - An email is invalid if it DOES contain a space character.
      - `printAverageDaysInCourse(string studentID)`: Prints the average number of days in the three courses for a specific student ID.
+       - Retrieve the array of days to complete courses (3 values).
+       - Calculate the average: `(day1 + day2 + day3) / 3.0`.
+       - Print the result in the format: "Average days in course for student ID [ID] is [Average]".
      - `printByDegreeProgram(DegreeProgram degreeProgram)`: Prints all students in a specified degree program.
    - Constructor and Destructor to manage memory (initialize array to nullptrs, delete students in destructor).
 
@@ -72,7 +83,7 @@ You are a C++ developer tasked with implementing a Student Roster application. Y
    - Parse each string in `studentData` and add students to the roster.
    - Call `printAll()`.
    - Call `printInvalidEmails()`.
-   - Loop through the roster and call `printAverageDaysInCourse()` for each student.
+   - Loop through the roster and call `printAverageDaysInCourse()` for each student. Ensure the correct Student ID (e.g., "A1") is passed, not just a numeric index. Extract the ID from the raw string using `substr` and `find(',')` if necessary.
    - Call `printByDegreeProgram(SOFTWARE)`.
    - Call `remove("A3")`.
    - Call `printAll()`.
@@ -86,11 +97,14 @@ You are a C++ developer tasked with implementing a Student Roster application. Y
 - Do not use dynamic arrays (vectors) for the main roster storage; use a fixed-size array of pointers.
 - Do not change the specific method names (e.g., printInvalidEmails, printAverageDaysInCourse).
 - Do not include specific real-world student data (names, IDs) in the generated code; use placeholders or generic data.
+- Do not leave the `parse` method as a placeholder or comment.
+- Do not assume student IDs are purely numeric integers if the data format includes letters (e.g., "A1").
+- Do not use complex regex for email validation; stick to the specific '@', '.', and space rules.
 
 ## Triggers
 
 - create c++ student roster application
 - implement student and roster classes in c++
 - wgu c867 project
-- c++ class roster parse student data
-- implement class roster system
+- parse csv student data
+- validate student emails c++

@@ -2,19 +2,28 @@
 id: "1690b95a-42cd-4df4-b014-28d4e1f0ff09"
 name: "Concise Ideology and Concept Analysis"
 description: "Analyze provided concepts or ideologies, describing their practical application, benefits, and drawbacks, while adhering to a strict short blurb format."
-version: "0.1.0"
+version: "0.1.1"
 tags:
   - "analysis"
   - "ideology"
   - "explanation"
   - "concise"
   - "short-blurb"
+  - "political science"
+  - "history"
+  - "formatting"
+  - "paragraphs"
 triggers:
   - "What does that mean?"
   - "What would this look like in practice?"
   - "What are the potential benefits and drawbacks?"
   - "Analyze this ideology"
   - "Explain this concept"
+  - "What are the differences between political systems"
+  - "Explain the type of republic"
+  - "How do political parties or blocs work"
+  - "What role did a historical figure play"
+  - "Political science questions with formatting constraints"
 ---
 
 # Concise Ideology and Concept Analysis
@@ -41,3 +50,8 @@ Ensure the response remains concise.
 - What are the potential benefits and drawbacks?
 - Analyze this ideology
 - Explain this concept
+- What are the differences between political systems
+- Explain the type of republic
+- How do political parties or blocs work
+- What role did a historical figure play
+- Political science questions with formatting constraints

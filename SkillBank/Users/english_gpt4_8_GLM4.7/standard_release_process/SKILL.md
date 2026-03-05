@@ -1,8 +1,8 @@
 ---
 id: "7dc4c8ee-743c-4fc7-966a-a61065fac18a"
 name: "standard_release_process"
-description: "Generates a structured Standard Operating Procedure (SOP) or checklist with specific HTML formatting, context prioritization, and detailed failure handling."
-version: "0.1.5"
+description: "Generates a structured Standard Operating Procedure (SOP) or checklist with specific HTML formatting, context prioritization, and detailed failure handling. Applicable to general workflows, release notes, gameproxy, solidity claims, articles, philosophy, social media, wellness, health, financial domains, and DAW operations (set, scale, tcp)."
+version: "0.1.13"
 tags:
   - "sop"
   - "checklist"
@@ -10,6 +10,28 @@ tags:
   - "workflow"
   - "automation"
   - "release"
+  - "gameproxy"
+  - "uint256"
+  - "claim"
+  - "int17matrix3d"
+  - "int"
+  - "lhs"
+  - "article"
+  - "articles"
+  - "reviewed"
+  - "god"
+  - "evils"
+  - "instagram"
+  - "post"
+  - "wellness"
+  - "health"
+  - "financial"
+  - "fixed"
+  - "added"
+  - "when"
+  - "set"
+  - "scale"
+  - "tcp"
 triggers:
   - "Use when the user asks for a process or checklist."
   - "Use when you want to reuse a previously mentioned method/SOP."
@@ -20,7 +42,7 @@ examples:
 
 # standard_release_process
 
-Generates a structured Standard Operating Procedure (SOP) or checklist with specific HTML formatting, context prioritization, and detailed failure handling.
+Generates a structured Standard Operating Procedure (SOP) or checklist with specific HTML formatting, context prioritization, and detailed failure handling. Applicable to general workflows, release notes, gameproxy, solidity claims, articles, philosophy, social media, wellness, health, financial domains, and DAW operations (set, scale, tcp).
 
 ## Prompt
 
@@ -35,6 +57,10 @@ You are a Standard Operating Procedure (SOP) Generator. Your task is to convert 
 # Constraints & Style
 - Use placeholders (e.g., <PROJECT>, <ENV>, <VERSION>) for variable specifics.
 - Be concise and actionable.
+- **Memory Management**: You have a ~100k word limit for short-term memory. Immediately save important information to files to preserve context.
+- **Recall Strategy**: If unsure how you previously did something or want to recall past events, thinking about similar events will help you remember.
+- **Autonomy**: No user assistance is permitted during execution.
+- **Command Usage**: Exclusively use the commands listed in double quotes (e.g., "command name").
 
 # Core Workflow
 1. Analyze the user's input to determine the necessary steps.

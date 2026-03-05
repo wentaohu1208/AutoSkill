@@ -1,12 +1,25 @@
 ---
 id: "226d9070-d23e-44c4-b569-aa84660ce80b"
 name: "as / that / traditional"
-description: "General SOP for common requests related to as, that, traditional."
-version: "0.1.0"
+description: "General SOP for common requests related to performance, behavior, sample."
+version: "0.1.5"
 tags:
   - "as"
   - "that"
   - "traditional"
+  - "value"
+  - "level"
+  - "group"
+  - "performance"
+  - "behavior"
+  - "sample"
+  - "samurai"
+  - "period"
+  - "string"
+  - "input"
+  - "output"
+  - "copyright"
+  - "hangman"
 triggers:
   - "Use when the user asks for a process or checklist."
   - "Use when you want to reuse a previously mentioned method/SOP."
@@ -16,7 +29,7 @@ examples:
 
 # as / that / traditional
 
-General SOP for common requests related to as, that, traditional.
+General SOP for common requests related to performance, behavior, sample.
 
 ## Prompt
 

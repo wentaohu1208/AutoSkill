@@ -1,8 +1,8 @@
 ---
 id: "4d65e41a-4126-4681-8ebd-d90beeffa349"
 name: "standard_release_process"
-description: "Generates a Standard Operating Procedure (SOP) based on offline conversation evidence, utilizing specific user queries as primary extraction points. Applicable to various domains including persistence, project setup, and general workflows."
-version: "0.1.3"
+description: "Generates a Standard Operating Procedure (SOP) based on offline conversation evidence, utilizing specific user queries as primary extraction points. Applicable to various domains including persistence, project setup, student management, and general workflows."
+version: "0.1.4"
 tags:
   - "sop"
   - "process"
@@ -10,6 +10,9 @@ tags:
   - "couchbase"
   - "product"
   - "persistence"
+  - "student"
+  - "form"
+  - "class"
 triggers:
   - "Use when the user asks for a process or checklist."
   - "Use when you want to reuse a previously mentioned method/SOP."
@@ -19,7 +22,7 @@ examples:
 
 # standard_release_process
 
-Generates a Standard Operating Procedure (SOP) based on offline conversation evidence, utilizing specific user queries as primary extraction points. Applicable to various domains including persistence, project setup, and general workflows.
+Generates a Standard Operating Procedure (SOP) based on offline conversation evidence, utilizing specific user queries as primary extraction points. Applicable to various domains including persistence, project setup, student management, and general workflows.
 
 ## Prompt
 

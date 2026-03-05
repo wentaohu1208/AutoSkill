@@ -2,11 +2,14 @@
 id: "138ce6ba-20b0-450e-92c2-6174736f8798"
 name: "player / lives / 02"
 description: "General SOP for common requests related to player, lives, 02."
-version: "0.1.0"
+version: "0.1.1"
 tags:
   - "player"
   - "lives"
   - "02"
+  - "curl"
+  - "api"
+  - "command"
 triggers:
   - "Use when the user asks for a process or checklist."
   - "Use when you want to reuse a previously mentioned method/SOP."

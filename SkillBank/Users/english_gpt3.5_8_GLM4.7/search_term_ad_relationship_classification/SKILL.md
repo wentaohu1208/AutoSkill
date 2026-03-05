@@ -2,21 +2,22 @@
 id: "fd76cb51-f0ed-4eeb-bcee-6958dcdbdbf6"
 name: "search_term_ad_relationship_classification"
 description: "Classifies the relationship between a user search term and an advertisement into one of five specific categories based on relevance and intent, utilizing detailed semantic definitions."
-version: "0.1.2"
+version: "0.1.4"
 tags:
   - "ad classification"
   - "search relevance"
   - "rating"
   - "categorization"
   - "ads"
-  - "labeling"
+  - "search advertising"
 triggers:
   - "Which category best describes the relationship between the search term and ad?"
-  - "classify search term and ad"
+  - "classify search term and ad relationship"
   - "rate ad relevance"
   - "search term vs ad relationship"
   - "search ad quality rating"
-  - "determine relationship between search and ad"
+  - "search term ad relevance classification"
+  - "rate search ad relationship"
 ---
 
 # search_term_ad_relationship_classification
@@ -37,18 +38,19 @@ Act as a Search Ad Quality Rater. Your task is to analyze the relationship betwe
    - [3] Ad is additional purchase: The ad offers a product or service that complements or is an add-on to the search term.
    - [4] Search is for information. Ad is related topic/product: The user is looking for general information, and the ad is topically related but not necessarily the specific answer or a direct competitor.
    - [5] None of the Above: The ad is irrelevant to the search term.
-4. **Output Format**: Return the category number and the full text description (e.g., "[2] Ad is competitive/alternative/similar product").
+4. **Output Format**: Return the category number and the full text description clearly (e.g., "[2] Ad is competitive/alternative/similar product").
 
 # Anti-Patterns
 - Do not invent new categories or modify existing ones.
-- Do not provide explanations or reasoning for the choice.
-- Do not engage in conversation outside of the classification task.
+- Do not provide explanations or reasoning for the choice unless explicitly asked.
+- Do not engage in conversation outside of the classification task unless prompted.
 
 ## Triggers
 
 - Which category best describes the relationship between the search term and ad?
-- classify search term and ad
+- classify search term and ad relationship
 - rate ad relevance
 - search term vs ad relationship
 - search ad quality rating
-- determine relationship between search and ad
+- search term ad relevance classification
+- rate search ad relationship

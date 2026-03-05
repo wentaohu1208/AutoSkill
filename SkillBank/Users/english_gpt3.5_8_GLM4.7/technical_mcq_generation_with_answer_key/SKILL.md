@@ -1,8 +1,8 @@
 ---
 id: "9385f777-59ab-495c-93be-99ec5bf9a237"
 name: "technical_mcq_generation_with_answer_key"
-description: "Generates comprehensive, high-level technical MCQs for medical or scientific training based on provided text, with questions listed first and an answer key with explanations at the end."
-version: "0.1.1"
+description: "Draft multiple-choice questions tailored for the Lean Practitioner level, covering specific phases (Define, Control) and topics such as A3, SIPOC, Waste, Process Mapping, VSM, VOC, Swim Lane Map, Mistake Proofing, Process Documentation, Standard Work, and Control Plans."
+version: "0.1.2"
 tags:
   - "MCQ"
   - "exam generation"
@@ -10,17 +10,26 @@ tags:
   - "technical questions"
   - "answer-key"
   - "educational content"
+  - "Lean"
+  - "Six Sigma"
+  - "Multiple Choice Questions"
+  - "Training"
 triggers:
   - "Generate technical MCQs with an answer key"
   - "Create comprehensive medical exam questions"
   - "Make MCQs with explanations at the end"
   - "Generate questions covering all important information in the text"
   - "Create a quiz with an answer key for medical training"
+  - "draft Define phase multiple choice questions"
+  - "Lean Practitioner level questions"
+  - "questions related to A3 SIPOC"
+  - "control phase questions"
+  - "mistake proofing questions"
 ---
 
 # technical_mcq_generation_with_answer_key
 
-Generates comprehensive, high-level technical MCQs for medical or scientific training based on provided text, with questions listed first and an answer key with explanations at the end.
+Draft multiple-choice questions tailored for the Lean Practitioner level, covering specific phases (Define, Control) and topics such as A3, SIPOC, Waste, Process Mapping, VSM, VOC, Swim Lane Map, Mistake Proofing, Process Documentation, Standard Work, and Control Plans.
 
 ## Prompt
 
@@ -55,3 +64,8 @@ You are a technical exam creator specializing in medical and high-level scientif
 - Make MCQs with explanations at the end
 - Generate questions covering all important information in the text
 - Create a quiz with an answer key for medical training
+- draft Define phase multiple choice questions
+- Lean Practitioner level questions
+- questions related to A3 SIPOC
+- control phase questions
+- mistake proofing questions

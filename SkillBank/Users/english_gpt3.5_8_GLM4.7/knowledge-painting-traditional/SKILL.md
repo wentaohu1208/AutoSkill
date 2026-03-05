@@ -2,11 +2,16 @@
 id: "13bb86f7-3d84-4074-909f-1e07d859c610"
 name: "knowledge / painting / traditional"
 description: "General SOP for common requests related to knowledge, painting, traditional."
-version: "0.1.0"
+version: "0.1.2"
 tags:
   - "knowledge"
   - "painting"
   - "traditional"
+  - "chord"
+  - "progression"
+  - "am"
+  - "by"
+  - "famous"
 triggers:
   - "Use when the user asks for a process or checklist."
   - "Use when you want to reuse a previously mentioned method/SOP."

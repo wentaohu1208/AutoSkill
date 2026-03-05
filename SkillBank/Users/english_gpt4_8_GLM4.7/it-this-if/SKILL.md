@@ -2,13 +2,15 @@
 id: "f3d10f4b-c00d-41cf-a6f0-12c81b053f0a"
 name: "it / this / if"
 description: "General SOP for common requests related to it, this, if."
-version: "0.1.1"
+version: "0.1.2"
 tags:
   - "it"
   - "this"
   - "if"
   - "two"
   - "that"
+  - "our"
+  - "their"
 triggers:
   - "Use when the user asks for a process or checklist."
   - "Use when you want to reuse a previously mentioned method/SOP."

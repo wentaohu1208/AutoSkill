@@ -2,7 +2,7 @@
 id: "969a6a3e-7174-45c2-8be3-623d2511b1c6"
 name: "china / post / nationalist"
 description: "General SOP for common requests related to china, post, nationalist."
-version: "0.1.7"
+version: "0.1.15"
 tags:
   - "china"
   - "post"
