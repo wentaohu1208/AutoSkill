@@ -2,14 +2,14 @@
 
 English | [中文](README.zh-CN.md)
 
+<p align="center">
+  <img src="imgs/AutoSkill_logo.png" alt="AutoSkill Logo" width="320" />
+</p>
+
 [![Maintained By](https://img.shields.io/badge/Maintained%20By-ICALK-0A66C2)](https://github.com/ECNU-ICALK/AutoSkill)
 [![arXiv](https://img.shields.io/badge/arXiv-2603.01145-b31b1b.svg)](https://arxiv.org/abs/2603.01145)
 [![GitHub](https://img.shields.io/badge/GitHub-ECNU--ICALK%2FAutoSkill-181717?logo=github)](https://github.com/ECNU-ICALK/AutoSkill)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-<p align="center">
-  <img src="imgs/AutoSkill_logo.png" alt="AutoSkill Logo" width="320" />
-</p>
 
 AutoSkill is a practical implementation of **Experience-driven Lifelong Learning (ELL)**.
 It learns from real interaction experience (dialogue + behavior/events), automatically creates reusable Skills,

@@ -2,14 +2,14 @@
 
 中文 | [English](README.md)
 
+<p align="center">
+  <img src="imgs/AutoSkill_logo.png" alt="AutoSkill Logo" width="320" />
+</p>
+
 [![Maintained By](https://img.shields.io/badge/Maintained%20By-ICALK-0A66C2)](https://github.com/ECNU-ICALK/AutoSkill)
 [![arXiv](https://img.shields.io/badge/arXiv-2603.01145-b31b1b.svg)](https://arxiv.org/abs/2603.01145)
 [![GitHub](https://img.shields.io/badge/GitHub-ECNU--ICALK%2FAutoSkill-181717?logo=github)](https://github.com/ECNU-ICALK/AutoSkill)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-<p align="center">
-  <img src="imgs/AutoSkill_logo.png" alt="AutoSkill Logo" width="320" />
-</p>
 
 AutoSkill 是 **Experience-driven Lifelong Learning（ELL，经验驱动终身学习）** 的工程化实践。
 它从真实交互经验（对话 + 行为/事件）中学习，自动生成可复用技能，并通过合并与版本演进持续优化已有技能。
