@@ -46,3 +46,39 @@ class SkillStore(ABC):
     ) -> List[SkillHit]:
         """Run search."""
         raise NotImplementedError
+
+    def record_skill_usage_judgments(
+        self,
+        *,
+        user_id: str,
+        judgments: List[Dict[str, Any]],
+        prune_min_retrieved: int = 0,
+        prune_max_used: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        Records retrieval/relevance/usage judgments for one turn.
+
+        Default implementation is a no-op so custom stores remain backward compatible.
+        """
+
+        _ = user_id
+        _ = judgments
+        _ = prune_min_retrieved
+        _ = prune_max_used
+        return {"updated": 0, "deleted_skill_ids": [], "stats": {}}
+
+    def get_skill_usage_stats(
+        self,
+        *,
+        user_id: str,
+        skill_id: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Returns usage counters for one user (and optionally one skill).
+
+        Default implementation is a no-op so custom stores remain backward compatible.
+        """
+
+        _ = user_id
+        _ = skill_id
+        return {"skills": {}}

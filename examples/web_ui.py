@@ -256,6 +256,7 @@ class _SessionManager:
             "turns": [],
             "retrieval_events": [],
             "extraction_events": [],
+            "usage_events": [],
             "config_events": [],
             "last_result": None,
         }
@@ -343,6 +344,7 @@ class _SessionManager:
                     "chat_append": [],
                     "retrieval": None,
                     "extraction": None,
+                    "usage": None,
                     "error": "",
                 }
             )
@@ -429,6 +431,39 @@ class _SessionManager:
             last_result["extraction"] = rec
             tr["last_result"] = last_result
 
+    def record_usage(self, sid: str, *, turn_id: Optional[str], usage: Any, source: str) -> None:
+        """Run record usage."""
+        key = str(sid or "").strip()
+        if not key:
+            return
+        if not isinstance(usage, dict):
+            return
+        now = self._now_ms()
+        rec = self._clone(usage) or {}
+        with self._lock:
+            if key not in self._sessions:
+                return
+            self._append_event_locked(
+                key,
+                "usage_events",
+                {
+                    "event_time": now,
+                    "source": str(source or ""),
+                    "turn_id": (str(turn_id).strip() if turn_id else None),
+                    "usage": rec,
+                },
+            )
+            if turn_id:
+                turn = self._find_turn_locked(key, turn_id)
+                if turn is not None:
+                    turn["usage"] = rec
+            tr = self._trace_for_locked(key)
+            last_result = tr.get("last_result")
+            if not isinstance(last_result, dict):
+                last_result = {}
+            last_result["usage"] = rec
+            tr["last_result"] = last_result
+
     def complete_turn(self, sid: str, *, turn_id: Optional[str], result: Any, source: str) -> None:
         """Run complete turn."""
         key = str(sid or "").strip()
@@ -456,6 +491,7 @@ class _SessionManager:
         # Record retrieval/extraction payloads from final result as well.
         self.record_retrieval(key, turn_id=turn_id, retrieval=result.get("retrieval"), source=source)
         self.record_extraction(key, turn_id=turn_id, extraction=result.get("extraction"), source=source)
+        self.record_usage(key, turn_id=turn_id, usage=result.get("usage"), source=source)
 
     def fail_turn(self, sid: str, *, turn_id: Optional[str], error: str) -> None:
         """Run fail turn."""
@@ -565,6 +601,7 @@ class _SessionManager:
             trace.setdefault("turns", [])
             trace.setdefault("retrieval_events", [])
             trace.setdefault("extraction_events", [])
+            trace.setdefault("usage_events", [])
             trace.setdefault("config_events", [])
             trace.setdefault("last_result", None)
 
@@ -770,19 +807,40 @@ def make_handler(manager: _SessionManager) -> type[BaseHTTPRequestHandler]:
             self.wfile.flush()
 
         @staticmethod
-        def _extract_extraction_events(polled: Any) -> List[Dict[str, Any]]:
-            """Run extract extraction events."""
+        def _extract_events(polled: Any, key: str) -> List[Dict[str, Any]]:
+            """Extracts one typed event list from a session poll payload."""
             events_obj = polled.get("events") if isinstance(polled, dict) else {}
-            out: List[Dict[str, Any]] = []
-            if isinstance(events_obj, dict):
-                raw = events_obj.get("extraction")
-                if isinstance(raw, list):
-                    out = [ev for ev in raw if isinstance(ev, dict)]
-            return out
+            if not isinstance(events_obj, dict):
+                return []
+            raw = events_obj.get(str(key))
+            if not isinstance(raw, list):
+                return []
+            return [ev for ev in raw if isinstance(ev, dict)]
 
-        def _drain_extraction_events_for_refresh(self, sid: str, session: InteractiveSession) -> List[Dict[str, Any]]:
+        def _record_polled_events(self, sid: str, polled: Any, *, source: str) -> Dict[str, List[Dict[str, Any]]]:
             """
-            Drains background extraction events and persists them to trace.
+            Records extraction/usage events emitted by `session.poll()`.
+
+            Returns the normalized event lists for caller-side response composition.
+            """
+
+            extraction_events = self._extract_events(polled, "extraction")
+            usage_events = self._extract_events(polled, "usage")
+            if extraction_events:
+                for ev in extraction_events:
+                    manager.record_extraction(sid, turn_id=None, extraction=ev, source=source)
+            if usage_events:
+                for ev in usage_events:
+                    manager.record_usage(sid, turn_id=None, usage=ev, source=source)
+            if extraction_events or usage_events:
+                manager.touch(sid)
+            return {"extraction": extraction_events, "usage": usage_events}
+
+        def _drain_background_events_for_refresh(
+            self, sid: str, session: InteractiveSession
+        ) -> Dict[str, List[Dict[str, Any]]]:
+            """
+            Drains background extraction/usage events and persists them to trace.
 
             This is used by both `/api/session/poll` and `/api/session/state` so that
             page refresh can recover the latest extraction result immediately instead of
@@ -790,12 +848,7 @@ def make_handler(manager: _SessionManager) -> type[BaseHTTPRequestHandler]:
             """
 
             polled = session.poll()
-            extraction_events = self._extract_extraction_events(polled)
-            if extraction_events:
-                for ev in extraction_events:
-                    manager.record_extraction(sid, turn_id=None, extraction=ev, source="poll")
-                manager.touch(sid)
-            return extraction_events
+            return self._record_polled_events(sid, polled, source="poll")
 
         def do_POST(self) -> None:  # noqa: N802
             """Run do POST."""
@@ -858,14 +911,14 @@ def make_handler(manager: _SessionManager) -> type[BaseHTTPRequestHandler]:
                     return _json_response(self, {"error": "unknown session_id"}, status=404)
                 # Refresh-time reconciliation: opportunistically drain background extraction
                 # events so the right panel can restore completed skill details immediately.
-                extraction_events = self._drain_extraction_events_for_refresh(sid, session)
+                drained = self._drain_background_events_for_refresh(sid, session)
                 return _json_response(
                     self,
                     {
                         "session_id": sid,
                         "state": session.state(),
                         "trace": manager.get_trace(sid),
-                        "events": {"extraction": extraction_events},
+                        "events": {"extraction": list(drained.get("extraction") or []), "usage": list(drained.get("usage") or [])},
                         "runtime": manager.runtime_info(),
                         "sessions": manager.list_sessions(),
                     },
@@ -877,12 +930,7 @@ def make_handler(manager: _SessionManager) -> type[BaseHTTPRequestHandler]:
                 if session is None:
                     return _json_response(self, {"error": "unknown session_id"}, status=404)
                 polled = session.poll()
-                extraction_events = self._extract_extraction_events(polled)
-                if extraction_events:
-                    for ev in extraction_events:
-                        manager.record_extraction(sid, turn_id=None, extraction=ev, source="poll")
-                    # Persist extraction trace updates so refresh can restore the right-side panel.
-                    manager.touch(sid)
+                self._record_polled_events(sid, polled, source="poll")
                 return _json_response(self, {"session_id": sid, "runtime": manager.runtime_info(), **polled})
 
             if path == "/api/session/input":

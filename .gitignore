@@ -13,7 +13,9 @@ Skills/Users/
 Skills/vectors/
 # Runtime BM25 index artifacts (legacy + current roots)
 Skills/index/skills-bm25.*
+Skills/index/skill_usage_stats.json
 SkillBank/index/skills-bm25.*
+SkillBank/index/skill_usage_stats.json
 SkillBank/Users/
 SkillBank/vectors/
 examples/eval_reports/

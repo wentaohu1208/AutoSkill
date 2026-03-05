@@ -686,6 +686,7 @@ class AutoSkillProxyRuntime:
             caller_system=caller_system,
         )
         retrieval = dict(result.get("retrieval") or {})
+        usage_info = dict(result.get("usage") or {})
         chat_append = list(result.get("chat_append") or [])
 
         content = ""
@@ -725,6 +726,7 @@ class AutoSkillProxyRuntime:
             },
             "autoskill": {
                 "retrieval": retrieval,
+                "usage": usage_info,
                 "extraction": {
                     "job_id": extraction_job_id,
                     "status": str(extraction_status or ("scheduled" if extraction_job_id else "disabled")),
@@ -786,6 +788,7 @@ class AutoSkillProxyRuntime:
 
         sent_role = False
         retrieval: Dict[str, Any] = {}
+        usage_info: Dict[str, Any] = {}
         extraction_job_id: Optional[str] = None
         extraction_status = "disabled"
 
@@ -831,6 +834,7 @@ class AutoSkillProxyRuntime:
                     result = dict(ev.get("result") or {})
                     if not retrieval:
                         retrieval = dict(result.get("retrieval") or {})
+                    usage_info = dict(result.get("usage") or {})
                     if extraction_job_id is None:
                         extraction_job_id, extraction_status = self._schedule_proxy_extraction_from_retrieval(
                             normalized_messages=messages,
@@ -919,6 +923,16 @@ class AutoSkillProxyRuntime:
                     "created": created,
                     "model": model,
                     "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                    "autoskill": {
+                        "retrieval": retrieval,
+                        "usage": usage_info,
+                        "extraction": {
+                            "job_id": extraction_job_id,
+                            "status": str(
+                                extraction_status or ("scheduled" if extraction_job_id else "disabled")
+                            ),
+                        },
+                    },
                 }
             )
             _done()

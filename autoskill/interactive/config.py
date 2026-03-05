@@ -51,6 +51,13 @@ class InteractiveConfig:
 
     assistant_temperature: float = 0.2
 
+    # Per-turn skill usage tracking:
+    # - judge retrieved skills with LLM for relevance/actual usage in reply
+    # - persist counters locally and auto-prune stale skills when threshold is met
+    usage_tracking_enabled: bool = True
+    usage_prune_min_retrieved: int = 40
+    usage_prune_max_used: int = 0
+
     def normalize(self) -> "InteractiveConfig":
         """Run normalize."""
         self.store_dir = str(self.store_dir or default_store_path()).strip() or default_store_path()
@@ -81,4 +88,7 @@ class InteractiveConfig:
         self.history_turns = max(0, int(self.history_turns))
         self.ingest_window = max(2, int(self.ingest_window))
         self.extract_turn_limit = max(1, int(self.extract_turn_limit))
+        self.usage_tracking_enabled = bool(self.usage_tracking_enabled)
+        self.usage_prune_min_retrieved = max(0, int(self.usage_prune_min_retrieved or 40))
+        self.usage_prune_max_used = max(0, int(self.usage_prune_max_used or 0))
         return self

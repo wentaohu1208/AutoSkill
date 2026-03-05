@@ -23,6 +23,7 @@ from .io import ConsoleIO, IO
 from .retrieval import retrieve_hits_by_scope
 from .rewriting import LLMQueryRewriter
 from .selection import LLMSkillSelector
+from .usage_tracking import LLMSkillUsageJudge, build_query_key
 
 
 @dataclass
@@ -40,6 +41,16 @@ class _BgExtractJob:
     hint: Optional[str]
     epoch: int
     retrieval_reference: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class _BgUsageJob:
+    # One asynchronous usage-audit task for a completed assistant turn.
+    query: str
+    assistant_reply: str
+    hits: List[Any]
+    selected_for_context: List[Any]
+    epoch: int
 
 
 def _top_reference_from_hits(hits: List[Any], *, user_id: str) -> Optional[Dict[str, Any]]:
@@ -81,6 +92,11 @@ class InteractiveChatApp:
         self.chat_llm = chat_llm
         self.query_rewriter = query_rewriter
         self.skill_selector = skill_selector
+        self.skill_usage_judge = (
+            LLMSkillUsageJudge(chat_llm)
+            if (chat_llm is not None and bool(getattr(self.config, "usage_tracking_enabled", True)))
+            else None
+        )
 
         self.messages: List[Dict[str, Any]] = []
         self._pending: Optional[_PendingExtraction] = None
@@ -91,6 +107,10 @@ class InteractiveChatApp:
         # FIFO queue for extraction jobs that arrive while a worker is running.
         self._queued_extract: List[_BgExtractJob] = []
         self._events: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+        self._usage_events: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+        self._bg_usage_sema = threading.BoundedSemaphore(1)
+        self._bg_usage_lock = threading.Lock()
+        self._queued_usage: List[_BgUsageJob] = []
 
     def run(self) -> None:
         """Starts the blocking REPL loop."""
@@ -177,8 +197,11 @@ class InteractiveChatApp:
             self._turns_at_last_extract_check = 0
             self._epoch += 1
             self._events = queue.Queue()
+            self._usage_events = queue.Queue()
             with self._bg_lock:
                 self._queued_extract = []
+            with self._bg_usage_lock:
+                self._queued_usage = []
             self.io.print("Conversation cleared.")
             return False
 
@@ -535,6 +558,16 @@ class InteractiveChatApp:
         latest_assistant = "".join(assistant_parts).strip() or "(empty response)"
         self.io.print("")
         self.messages.append({"role": "assistant", "content": latest_assistant})
+        usage = self._schedule_usage_tracking(
+            query=latest_user,
+            assistant_reply=latest_assistant,
+            hits=hits,
+            selected_for_context=selected,
+        )
+        if str(usage.get("status") or "") == "scheduled":
+            self.io.print("[usage] scheduled in background")
+        else:
+            self._print_usage_tracking(usage)
 
         # 3) Stage the latest window for potential extraction on the next turn, when we may have
         # explicit user feedback about whether this response helped.
@@ -596,6 +629,195 @@ class InteractiveChatApp:
             elif owner:
                 source = f"user:{owner}"
             self.io.print(f"- {i}. {source} | {s.id} | {s.name}")
+
+    def _schedule_usage_tracking(
+        self,
+        *,
+        query: str,
+        assistant_reply: str,
+        hits: List[Any],
+        selected_for_context: List[Any],
+    ) -> Dict[str, Any]:
+        """Enqueues usage auditing so response output is not blocked."""
+
+        if not bool(getattr(self.config, "usage_tracking_enabled", True)):
+            return {"enabled": False, "status": "disabled", "updated": 0, "deleted_skill_ids": [], "stats": {}}
+        if not hits:
+            return {"enabled": True, "status": "skipped", "updated": 0, "deleted_skill_ids": [], "stats": {}}
+
+        job = _BgUsageJob(
+            query=str(query or ""),
+            assistant_reply=str(assistant_reply or ""),
+            hits=list(hits or []),
+            selected_for_context=list(selected_for_context or []),
+            epoch=int(self._epoch),
+        )
+        with self._bg_usage_lock:
+            if self._bg_usage_sema.acquire(blocking=False):
+                t = threading.Thread(target=self._background_usage_worker, args=(job,), daemon=True)
+                t.start()
+            else:
+                self._queued_usage.append(job)
+        return {"enabled": True, "status": "scheduled"}
+
+    def _track_skill_usage_sync(
+        self,
+        *,
+        query: str,
+        assistant_reply: str,
+        hits: List[Any],
+        selected_for_context: List[Any],
+        expected_epoch: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Tracks per-skill retrieval/usage counters and optional auto-pruning."""
+
+        if not bool(getattr(self.config, "usage_tracking_enabled", True)):
+            return {"enabled": False, "updated": 0, "deleted_skill_ids": [], "stats": {}}
+
+        if not hits:
+            return {"enabled": True, "updated": 0, "deleted_skill_ids": [], "stats": {}}
+
+        selected_ids = [str(getattr(s, "id", "") or "").strip() for s in (selected_for_context or [])]
+        selected_ids = [sid for sid in selected_ids if sid]
+        query_key = build_query_key(str(query or ""))
+
+        if self.skill_usage_judge is not None:
+            judgments = self.skill_usage_judge.judge(
+                query=str(query or ""),
+                assistant_reply=str(assistant_reply or ""),
+                hits=list(hits or []),
+                selected_for_context_ids=selected_ids,
+            )
+        else:
+            selected_set = set(selected_ids)
+            judgments = []
+            for h in list(hits or []):
+                skill = getattr(h, "skill", None)
+                if skill is None:
+                    continue
+                sid = str(getattr(skill, "id", "") or "").strip()
+                if not sid:
+                    continue
+                judgments.append(
+                    {
+                        "id": sid,
+                        "relevant": bool(sid in selected_set),
+                        "used": False,
+                        "reason": "no_judge_llm",
+                        "query_key": query_key,
+                    }
+                )
+        if query_key:
+            for row in judgments:
+                if isinstance(row, dict) and not str(row.get("query_key") or "").strip():
+                    row["query_key"] = query_key
+
+        if expected_epoch is not None and int(expected_epoch) != int(self._epoch):
+            return {
+                "enabled": True,
+                "updated": 0,
+                "deleted_skill_ids": [],
+                "stats": {},
+                "judgments": judgments,
+                "status": "dropped",
+                "error": "stale usage job after session reset",
+            }
+
+        recorder = getattr(self.sdk.store, "record_skill_usage_judgments", None)
+        if not callable(recorder):
+            return {
+                "enabled": True,
+                "updated": 0,
+                "deleted_skill_ids": [],
+                "stats": {},
+                "judgments": judgments,
+                "error": "store does not support usage counters",
+            }
+
+        try:
+            out = recorder(
+                user_id=self.config.user_id,
+                judgments=judgments,
+                prune_min_retrieved=int(getattr(self.config, "usage_prune_min_retrieved", 40) or 40),
+                prune_max_used=int(getattr(self.config, "usage_prune_max_used", 0) or 0),
+            )
+        except Exception as e:
+            return {
+                "enabled": True,
+                "updated": 0,
+                "deleted_skill_ids": [],
+                "stats": {},
+                "judgments": judgments,
+                "error": str(e),
+            }
+
+        result = dict(out or {})
+        result.setdefault("updated", 0)
+        result.setdefault("deleted_skill_ids", [])
+        result.setdefault("stats", {})
+        result["enabled"] = True
+        result["judgments"] = judgments
+        return result
+
+    def _background_usage_worker(self, job: _BgUsageJob) -> None:
+        """Worker loop for asynchronous usage auditing."""
+
+        try:
+            current = job
+            while True:
+                epoch = int(getattr(current, "epoch", 0) or 0)
+                if epoch != int(self._epoch):
+                    # Session was cleared/reset; drop stale usage jobs.
+                    break
+                self._usage_events.put({"status": "running", "error": ""})
+                try:
+                    result = self._track_skill_usage_sync(
+                        query=str(current.query or ""),
+                        assistant_reply=str(current.assistant_reply or ""),
+                        hits=list(current.hits or []),
+                        selected_for_context=list(current.selected_for_context or []),
+                        expected_epoch=epoch,
+                    )
+                    if epoch != int(self._epoch):
+                        break
+                    ev = dict(result or {})
+                    ev["status"] = "completed"
+                    self._usage_events.put(ev)
+                except Exception as e:
+                    self._usage_events.put({"status": "failed", "error": str(e)})
+
+                with self._bg_usage_lock:
+                    nxt = self._queued_usage.pop(0) if self._queued_usage else None
+                if nxt is None:
+                    break
+                current = nxt
+        finally:
+            try:
+                self._bg_usage_sema.release()
+            except Exception:
+                pass
+            self._maybe_restart_queued_usage_worker()
+
+    def _print_usage_tracking(self, usage: Dict[str, Any]) -> None:
+        """Prints concise usage tracking results in CLI mode."""
+
+        if not isinstance(usage, dict):
+            return
+        if not bool(usage.get("enabled", False)):
+            return
+        err = str(usage.get("error") or "").strip()
+        if err:
+            self.io.print("[usage] failed:", err)
+            return
+        updated = int(usage.get("updated", 0) or 0)
+        deleted_ids = [str(x) for x in (usage.get("deleted_skill_ids") or []) if str(x)]
+        if updated <= 0 and not deleted_ids:
+            return
+        self.io.print(f"[usage] updated counters for {updated} retrieved skill(s)")
+        if deleted_ids:
+            self.io.print(f"[usage] auto-pruned {len(deleted_ids)} stale skill(s):")
+            for sid in deleted_ids:
+                self.io.print(f"- {sid}")
 
     def _build_assistant_inputs(self, *, context: str, use_skills: bool) -> Tuple[str, str]:
         """
@@ -820,6 +1042,40 @@ class InteractiveChatApp:
                 self._bg_extract_sema.release()
             except Exception:
                 pass
+            self._maybe_restart_queued_extraction_worker()
+
+    def _maybe_restart_queued_usage_worker(self) -> None:
+        """
+        Best-effort restart path for queued usage jobs.
+
+        Needed when a worker exits early (e.g., stale epoch after /clear) while a new job was queued
+        under semaphore contention.
+        """
+
+        restart_job: Optional[_BgUsageJob] = None
+        with self._bg_usage_lock:
+            if self._queued_usage and self._bg_usage_sema.acquire(blocking=False):
+                restart_job = self._queued_usage.pop(0)
+        if restart_job is not None:
+            threading.Thread(target=self._background_usage_worker, args=(restart_job,), daemon=True).start()
+
+    def _maybe_restart_queued_extraction_worker(self) -> None:
+        """
+        Best-effort restart path for queued extraction jobs.
+
+        Keeps FIFO queue progress when a worker exits before draining the queue.
+        """
+
+        restart_job: Optional[_BgExtractJob] = None
+        with self._bg_lock:
+            if self._queued_extract and self._bg_extract_sema.acquire(blocking=False):
+                restart_job = self._queued_extract.pop(0)
+        if restart_job is not None:
+            threading.Thread(
+                target=self._background_extraction_worker,
+                args=(restart_job,),
+                daemon=True,
+            ).start()
 
     def _drain_background_events(self) -> None:
         """
@@ -858,6 +1114,19 @@ class InteractiveChatApp:
                     sid = getattr(s, "id", "")
                     if sid:
                         self._print_skill_md(str(sid), label=f"extract:{trigger}")
+
+        while True:
+            try:
+                ev = self._usage_events.get_nowait()
+            except queue.Empty:
+                break
+            status = str(ev.get("status") or "").strip().lower()
+            if status in {"", "running"}:
+                continue
+            if status == "failed":
+                self.io.print("[usage] failed:", str(ev.get("error") or "unknown error"))
+                continue
+            self._print_usage_tracking(ev)
 
     def _print_skill_md(self, skill_id: str, *, label: str) -> None:
         """Prints a capped SKILL.md preview for explicit extraction actions."""

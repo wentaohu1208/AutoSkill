@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -103,6 +104,7 @@ def _safe_rel_path(path: str) -> str:
 
 
 _ID_LINE_RE = re.compile(r"^\s*id\s*:\s*(.*?)\s*$", re.IGNORECASE)
+_USAGE_DUP_WINDOW_MS = 10 * 60 * 1000
 
 
 def _skill_md_has_nonempty_id(md: str) -> bool:
@@ -259,6 +261,10 @@ class LocalSkillStore(SkillStore):
             dir_path=self._keyword_index_dir,
             name=str(bm25_index_name or "skills-bm25"),
         )
+        self._usage_stats_path = os.path.join(
+            self._keyword_index_dir, "skill_usage_stats.json"
+        )
+        self._usage_stats_by_user: Dict[str, Dict[str, Dict[str, Any]]] = {}
         self._bm25_health_checked = False
         self._vector_doc_hash_by_id: Dict[str, str] = {}
         self._vector_doc_hash_path = os.path.join(
@@ -266,6 +272,7 @@ class LocalSkillStore(SkillStore):
         )
 
         os.makedirs(self._root_dir, exist_ok=True)
+        self._load_usage_stats_manifest()
         if self._cache_vectors:
             os.makedirs(self._vector_cache_dir, exist_ok=True)
             self._load_vector_doc_hash_manifest()
@@ -375,7 +382,9 @@ class LocalSkillStore(SkillStore):
             )
             self._index_identity_desc_locked(self._records[skill.id])
             self._set_bm25_doc_locked(skill)
+            self._touch_usage_skill_locked(user_id=user_id, skill=skill)
             self._save_vector_doc_hash_manifest_locked()
+            self._save_usage_stats_manifest_locked()
 
     def get(self, skill_id: str) -> Optional[Skill]:
         """Returns a skill by id if loaded in memory."""
@@ -398,6 +407,7 @@ class LocalSkillStore(SkillStore):
             self._deindex_identity_desc_locked(skill_id)
             self._remove_bm25_doc_locked(skill_id)
             self._remove_vector_doc_hash_locked(skill_id)
+            self._remove_usage_skill_locked(user_id=rec.owner, skill_id=skill_id)
             try:
                 shutil.rmtree(rec.dir_path)
             except Exception:
@@ -409,6 +419,7 @@ class LocalSkillStore(SkillStore):
                 except Exception:
                     pass
             self._save_vector_doc_hash_manifest_locked()
+            self._save_usage_stats_manifest_locked()
             return True
 
     def list(self, *, user_id: str) -> List[Skill]:
@@ -423,6 +434,177 @@ class LocalSkillStore(SkillStore):
                 and r.owner == uid
                 and r.skill.status != SkillStatus.ARCHIVED
             ]
+
+    def record_skill_usage_judgments(
+        self,
+        *,
+        user_id: str,
+        judgments: List[Dict[str, Any]],
+        prune_min_retrieved: int = 0,
+        prune_max_used: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        Records per-turn retrieval/relevance/usage counters and prunes stale user skills.
+
+        Counters are persisted at:
+        - `<store_root>/index/skill_usage_stats.json`
+        """
+
+        uid = str(user_id or "").strip()
+        if not uid:
+            return {"updated": 0, "deleted_skill_ids": [], "stats": {}}
+
+        min_retrieved = max(0, int(prune_min_retrieved or 0))
+        max_used = max(0, int(prune_max_used or 0))
+        updates = list(judgments or [])
+
+        with self._lock:
+            bucket = self._usage_stats_by_user.setdefault(uid, {})
+            now_ms = int(time.time() * 1000)
+            touched_ids: List[str] = []
+            updated = 0
+            for item in updates:
+                if not isinstance(item, dict):
+                    continue
+                sid = str(item.get("id") or item.get("skill_id") or "").strip()
+                if not sid:
+                    continue
+                rec = self._records.get(sid)
+                if rec is None or rec.scope != "user" or rec.owner != uid:
+                    continue
+
+                row = self._ensure_usage_row_locked(uid, sid, rec.skill)
+                qkey = str(item.get("query_key") or "").strip()
+                recent_raw = row.get("recent_query_ts")
+                recent_map: Dict[str, int] = {}
+                if isinstance(recent_raw, dict):
+                    for k, v in recent_raw.items():
+                        kk = str(k or "").strip()
+                        if not kk:
+                            continue
+                        try:
+                            vv = int(v or 0)
+                        except Exception:
+                            vv = 0
+                        if vv > 0:
+                            recent_map[kk] = vv
+                cutoff = now_ms - _USAGE_DUP_WINDOW_MS
+                recent_map = {k: v for k, v in recent_map.items() if int(v) >= cutoff}
+                duplicate_query = bool(
+                    qkey
+                    and (qkey in recent_map)
+                    and int(recent_map.get(qkey, 0)) > 0
+                    and (now_ms - int(recent_map.get(qkey, 0))) <= _USAGE_DUP_WINDOW_MS
+                )
+                if not duplicate_query:
+                    row["retrieved"] = int(row.get("retrieved", 0)) + 1
+                    row["last_retrieved_at"] = now_ms
+                relevant = bool(item.get("relevant", False))
+                used = bool(item.get("used", False)) and relevant
+                if relevant and (not duplicate_query):
+                    row["relevant"] = int(row.get("relevant", 0)) + 1
+                    row["last_relevant_at"] = now_ms
+                if used:
+                    if (not duplicate_query) or int(row.get("used", 0) or 0) <= 0:
+                        row["used"] = int(row.get("used", 0)) + 1
+                        row["last_used_at"] = now_ms
+                row["name"] = str(getattr(rec.skill, "name", "") or "")
+                row["description"] = str(getattr(rec.skill, "description", "") or "")
+                if qkey:
+                    row["last_query_key"] = qkey
+                    row["last_query_at"] = now_ms
+                    recent_map[qkey] = now_ms
+                if len(recent_map) > 64:
+                    pairs = sorted(recent_map.items(), key=lambda kv: int(kv[1]), reverse=True)[:32]
+                    recent_map = {k: int(v) for k, v in pairs}
+                row["recent_query_ts"] = recent_map
+                touched_ids.append(sid)
+                updated += 1
+
+            deleted_skill_ids: List[str] = []
+            if min_retrieved > 0 and bucket:
+                prune_ids: List[str] = []
+                for sid, row in list(bucket.items()):
+                    rec = self._records.get(str(sid))
+                    if rec is None or rec.scope != "user" or rec.owner != uid:
+                        continue
+                    retrieved = int(row.get("retrieved", 0) or 0)
+                    used = int(row.get("used", 0) or 0)
+                    if retrieved >= min_retrieved and used <= max_used:
+                        prune_ids.append(str(sid))
+                for sid in prune_ids:
+                    if self.delete(sid):
+                        deleted_skill_ids.append(sid)
+
+            self._save_usage_stats_manifest_locked()
+
+            stats = {}
+            for sid in touched_ids:
+                row = bucket.get(sid)
+                if not isinstance(row, dict):
+                    continue
+                stats[sid] = {
+                    "retrieved": int(row.get("retrieved", 0) or 0),
+                    "relevant": int(row.get("relevant", 0) or 0),
+                    "used": int(row.get("used", 0) or 0),
+                }
+            return {
+                "updated": int(updated),
+                "deleted_skill_ids": deleted_skill_ids,
+                "stats": stats,
+            }
+
+    def get_skill_usage_stats(
+        self,
+        *,
+        user_id: str,
+        skill_id: str = "",
+    ) -> Dict[str, Any]:
+        """Returns persistent usage counters for one user (or one specific skill)."""
+
+        uid = str(user_id or "").strip()
+        sid = str(skill_id or "").strip()
+        with self._lock:
+            bucket = dict(self._usage_stats_by_user.get(uid) or {})
+            if sid:
+                rec = self._records.get(sid)
+                if rec is None or rec.scope != "user" or rec.owner != uid:
+                    return {"skills": {}}
+                row = bucket.get(sid)
+                if not isinstance(row, dict):
+                    return {"skills": {}}
+                return {
+                    "skills": {
+                        sid: {
+                            "retrieved": int(row.get("retrieved", 0) or 0),
+                            "relevant": int(row.get("relevant", 0) or 0),
+                            "used": int(row.get("used", 0) or 0),
+                            "name": str(row.get("name", "") or ""),
+                            "description": str(row.get("description", "") or ""),
+                            "last_retrieved_at": int(row.get("last_retrieved_at", 0) or 0),
+                            "last_relevant_at": int(row.get("last_relevant_at", 0) or 0),
+                            "last_used_at": int(row.get("last_used_at", 0) or 0),
+                        }
+                    }
+                }
+            out: Dict[str, Dict[str, Any]] = {}
+            for k, row in bucket.items():
+                if not isinstance(row, dict):
+                    continue
+                rec = self._records.get(str(k))
+                if rec is None or rec.scope != "user" or rec.owner != uid:
+                    continue
+                out[str(k)] = {
+                    "retrieved": int(row.get("retrieved", 0) or 0),
+                    "relevant": int(row.get("relevant", 0) or 0),
+                    "used": int(row.get("used", 0) or 0),
+                    "name": str(row.get("name", "") or ""),
+                    "description": str(row.get("description", "") or ""),
+                    "last_retrieved_at": int(row.get("last_retrieved_at", 0) or 0),
+                    "last_relevant_at": int(row.get("last_relevant_at", 0) or 0),
+                    "last_used_at": int(row.get("last_used_at", 0) or 0),
+                }
+            return {"skills": out}
 
     def search(
         self,
@@ -892,6 +1074,7 @@ class LocalSkillStore(SkillStore):
             self._records = loaded
             self._rebuild_identity_desc_index_locked()
             self._rebuild_bm25_docs_locked()
+            self._sync_usage_stats_locked()
             self._bm25_health_checked = False
             if self._bm25_startup_mode == "rebuild":
                 if self._bm25_index is not None:
@@ -1163,6 +1346,248 @@ class LocalSkillStore(SkillStore):
                 f"issues={report.get('issues', [])}, error={e}"
             )
         self._bm25_health_checked = True
+
+    def _load_usage_stats_manifest(self) -> None:
+        """Loads persisted usage counters from disk."""
+
+        self._usage_stats_by_user = {}
+        path = str(self._usage_stats_path or "").strip()
+        if not path or not os.path.isfile(path):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                obj = json.load(f)
+        except Exception:
+            return
+        if not isinstance(obj, dict):
+            return
+        users = obj.get("users")
+        if not isinstance(users, dict):
+            return
+        out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        for uid, mapping in users.items():
+            user_key = str(uid or "").strip()
+            if not user_key or not isinstance(mapping, dict):
+                continue
+            bucket: Dict[str, Dict[str, Any]] = {}
+            for sid, raw in mapping.items():
+                skill_id = str(sid or "").strip()
+                if not skill_id or not isinstance(raw, dict):
+                    continue
+                bucket[skill_id] = {
+                    "retrieved": int(raw.get("retrieved", 0) or 0),
+                    "relevant": int(raw.get("relevant", 0) or 0),
+                    "used": int(raw.get("used", 0) or 0),
+                    "name": str(raw.get("name", "") or ""),
+                    "description": str(raw.get("description", "") or ""),
+                    "identity_desc_norm": normalize_identity_text(
+                        str(raw.get("identity_desc_norm", "") or "")
+                    ),
+                    "orphaned": bool(raw.get("orphaned", False)),
+                    "last_retrieved_at": int(raw.get("last_retrieved_at", 0) or 0),
+                    "last_relevant_at": int(raw.get("last_relevant_at", 0) or 0),
+                    "last_used_at": int(raw.get("last_used_at", 0) or 0),
+                    "last_query_key": str(raw.get("last_query_key", "") or ""),
+                    "last_query_at": int(raw.get("last_query_at", 0) or 0),
+                    "recent_query_ts": (
+                        {
+                            str(k or "").strip(): int(v or 0)
+                            for k, v in (raw.get("recent_query_ts") or {}).items()
+                            if str(k or "").strip() and int(v or 0) > 0
+                        }
+                        if isinstance(raw.get("recent_query_ts"), dict)
+                        else {}
+                    ),
+                    "last_deleted_at": int(raw.get("last_deleted_at", 0) or 0),
+                }
+            if bucket:
+                out[user_key] = bucket
+        self._usage_stats_by_user = out
+
+    def _save_usage_stats_manifest_locked(self) -> None:
+        """Persists usage counters to disk."""
+
+        path = str(self._usage_stats_path or "").strip()
+        if not path:
+            return
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp = path + ".tmp"
+            payload = {
+                "version": 1,
+                "saved_at_ms": int(time.time() * 1000),
+                "users": self._usage_stats_by_user,
+            }
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+            os.replace(tmp, path)
+        except Exception:
+            return
+
+    def _ensure_usage_row_locked(self, user_id: str, skill_id: str, skill: Skill) -> Dict[str, Any]:
+        """Ensures a usage row exists for one user skill."""
+
+        uid = str(user_id or "").strip()
+        sid = str(skill_id or "").strip()
+        if not uid or not sid:
+            return {}
+        by_user = self._usage_stats_by_user.setdefault(uid, {})
+        row = by_user.get(sid)
+        identity_key = self._usage_identity_key_for_skill(skill)
+        if not isinstance(row, dict):
+            # If this upsert is effectively a skill update with changed id, reuse counters from
+            # a previously deleted/orphaned row that matches the same normalized identity.
+            src_sid = self._find_orphan_usage_row_by_identity_locked(
+                user_id=uid,
+                identity_key=identity_key,
+                exclude_skill_id=sid,
+            )
+            if src_sid:
+                prev = by_user.pop(src_sid, {})
+                row = dict(prev) if isinstance(prev, dict) else {}
+                row["name"] = str(getattr(skill, "name", "") or "")
+                row["description"] = str(getattr(skill, "description", "") or "")
+                row["identity_desc_norm"] = identity_key
+                row["orphaned"] = False
+                row["last_migrated_from_skill_id"] = str(src_sid)
+                by_user[sid] = row
+                return row
+            row = {
+                "retrieved": 0,
+                "relevant": 0,
+                "used": 0,
+                "name": str(getattr(skill, "name", "") or ""),
+                "description": str(getattr(skill, "description", "") or ""),
+                "identity_desc_norm": identity_key,
+                "orphaned": False,
+                "last_retrieved_at": 0,
+                "last_relevant_at": 0,
+                "last_used_at": 0,
+                "last_query_key": "",
+                "last_query_at": 0,
+                "recent_query_ts": {},
+            }
+            by_user[sid] = row
+        else:
+            row["identity_desc_norm"] = identity_key
+            row["orphaned"] = bool(row.get("orphaned", False))
+        return row
+
+    def _touch_usage_skill_locked(self, *, user_id: str, skill: Skill) -> bool:
+        """Updates row metadata for one user skill without changing counters."""
+
+        uid = str(user_id or "").strip()
+        sid = str(getattr(skill, "id", "") or "").strip()
+        if not uid or not sid:
+            return False
+        bucket = self._usage_stats_by_user.setdefault(uid, {})
+        created = sid not in bucket
+        row = self._ensure_usage_row_locked(uid, sid, skill)
+        if not row:
+            return created
+        row["name"] = str(getattr(skill, "name", "") or "")
+        row["description"] = str(getattr(skill, "description", "") or "")
+        row["identity_desc_norm"] = self._usage_identity_key_for_skill(skill)
+        row["orphaned"] = False
+        return created
+
+    def _remove_usage_skill_locked(self, *, user_id: str, skill_id: str) -> None:
+        """Marks usage row orphaned when a user skill is deleted (for update-counter carry-over)."""
+
+        uid = str(user_id or "").strip()
+        sid = str(skill_id or "").strip()
+        if not uid or not sid:
+            return
+        bucket = self._usage_stats_by_user.get(uid)
+        if not bucket:
+            return
+        row = bucket.get(sid)
+        if not isinstance(row, dict):
+            return
+        row["orphaned"] = True
+        row["last_deleted_at"] = int(time.time() * 1000)
+
+    def _usage_identity_key_for_skill(self, skill: Skill) -> str:
+        """Returns a normalized key for usage-counter carry-over across updated skill ids."""
+
+        key = self._identity_desc_norm_for_skill(skill)
+        if key:
+            return key
+        return normalize_identity_text(str(getattr(skill, "name", "") or ""))
+
+    def _find_orphan_usage_row_by_identity_locked(
+        self,
+        *,
+        user_id: str,
+        identity_key: str,
+        exclude_skill_id: str,
+    ) -> str:
+        """
+        Finds the best orphaned usage row for identity-compatible counter migration.
+        """
+
+        uid = str(user_id or "").strip()
+        key = str(identity_key or "").strip()
+        exclude = str(exclude_skill_id or "").strip()
+        if not uid or not key:
+            return ""
+        bucket = self._usage_stats_by_user.get(uid) or {}
+        best_sid = ""
+        best_score = -1
+        for sid, row in bucket.items():
+            s = str(sid or "").strip()
+            if not s or s == exclude:
+                continue
+            if self._records.get(s) is not None:
+                # Skip active rows to avoid stealing counters from a live skill.
+                continue
+            if not isinstance(row, dict):
+                continue
+            if not bool(row.get("orphaned", False)):
+                continue
+            if str(row.get("identity_desc_norm", "") or "").strip() != key:
+                continue
+            score = int(row.get("retrieved", 0) or 0) * 10 + int(row.get("used", 0) or 0)
+            if score > best_score:
+                best_score = score
+                best_sid = s
+        return best_sid
+
+    def _sync_usage_stats_locked(self) -> None:
+        """Keeps usage rows aligned while preserving orphan rows for update counter carry-over."""
+
+        valid: Dict[str, set[str]] = {}
+        changed = False
+        for rec in self._records.values():
+            if rec.scope != "user":
+                continue
+            uid = str(rec.owner or "").strip()
+            sid = str(getattr(rec.skill, "id", "") or "").strip()
+            if not uid or not sid:
+                continue
+            valid.setdefault(uid, set()).add(sid)
+            if self._touch_usage_skill_locked(user_id=uid, skill=rec.skill):
+                changed = True
+
+        for uid, bucket in list(self._usage_stats_by_user.items()):
+            allow = valid.get(str(uid), set())
+            if not allow:
+                # Preserve orphan rows for this user, but clear active flags.
+                for row in bucket.values():
+                    if isinstance(row, dict):
+                        if not bool(row.get("orphaned", False)):
+                            row["orphaned"] = True
+                            changed = True
+                continue
+            for sid in list(bucket.keys()):
+                if sid in allow:
+                    continue
+                row = bucket.get(sid)
+                if isinstance(row, dict) and not bool(row.get("orphaned", False)):
+                    row["orphaned"] = True
+                    changed = True
+        if changed:
+            self._save_usage_stats_manifest_locked()
 
     def _load_vector_doc_hash_manifest(self) -> None:
         """Run load vector doc hash manifest."""

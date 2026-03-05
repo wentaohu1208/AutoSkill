@@ -6,10 +6,12 @@ English | [中文](README.zh-CN.md)
   <img src="imgs/AutoSkill_logo.png" alt="AutoSkill Logo" width="320" />
 </p>
 
-[![Maintained By](https://img.shields.io/badge/Maintained%20By-ICALK-0A66C2)](https://github.com/ECNU-ICALK/AutoSkill)
-[![arXiv](https://img.shields.io/badge/arXiv-2603.01145-b31b1b.svg)](https://arxiv.org/abs/2603.01145)
-[![GitHub](https://img.shields.io/badge/GitHub-ECNU--ICALK%2FAutoSkill-181717?logo=github)](https://github.com/ECNU-ICALK/AutoSkill)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <a href="https://github.com/ECNU-ICALK/AutoSkill"><img src="https://img.shields.io/badge/Maintained%20By-ICALK-0A66C2" alt="Maintained By ICALK" /></a>
+  <a href="https://arxiv.org/abs/2603.01145"><img src="https://img.shields.io/badge/arXiv-2603.01145-b31b1b.svg" alt="arXiv 2603.01145" /></a>
+  <a href="https://github.com/ECNU-ICALK/AutoSkill"><img src="https://img.shields.io/badge/GitHub-ECNU--ICALK%2FAutoSkill-181717?logo=github" alt="GitHub ECNU-ICALK/AutoSkill" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License MIT" /></a>
+</p>
 
 AutoSkill is a practical implementation of **Experience-driven Lifelong Learning (ELL)**.
 It learns from real interaction experience (dialogue + behavior/events), automatically creates reusable Skills,
@@ -250,6 +252,8 @@ User Query (+ recent history)
 - Similarity threshold and `top_k` control precision/recall.
 - Retrieved skills are filtered again before context injection.
 - The top-1 retrieved skill (only if it passes `min_score`) is passed to extraction as auxiliary identity context; extraction does not run a second retrieval internally.
+- Retrieved skills are also audited asynchronously for actual relevance/usage in the final reply.
+- Usage counters are isolated per user and can auto-prune stale user skills with defaults `retrieved >= 40` and `used <= 0`.
 
 ### 3.3 Interactive Extraction Policy
 
@@ -295,6 +299,9 @@ SkillBank/
     <embedding-signature>.meta.json
     <embedding-signature>.ids.txt
     <embedding-signature>.vecs.f32
+  index/
+    skills-bm25.*          (persistent BM25 index files)
+    skill_usage_stats.json (per-user retrieval/usage counters)
 ```
 
 Notes:
@@ -302,6 +309,7 @@ Notes:
 - `Users/<user_id>`: user-specific skills.
 - `Common/`: shared library skills (read-only in normal interactive usage).
 - `vectors/`: persistent vector cache keyed by embedding signature, so switching embedding models will build/use separate indexes.
+- `index/`: local keyword index (BM25) and usage statistics used by retrieval + automatic stale-skill pruning.
 - Offline skills extracted from WildChat 1M are available under `SkillBank/Users` in:
   `chinese_gpt3.5_8`, `english_gpt3.5_8`, `chinese_gpt4_8`, and `english_gpt4_8`.
 

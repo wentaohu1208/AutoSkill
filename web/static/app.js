@@ -32,6 +32,7 @@ const state = {
     turns: [],
     retrievalEvents: [],
     extractionEvents: [],
+    usageEvents: [],
     configEvents: [],
   },
 };
@@ -54,6 +55,7 @@ function makeEmptyTrace() {
     turns: [],
     retrievalEvents: [],
     extractionEvents: [],
+    usageEvents: [],
     configEvents: [],
   };
 }
@@ -347,6 +349,7 @@ function newTurn(text) {
     chatAppend: [],
     retrieval: null,
     extraction: null,
+    usage: null,
     error: "",
   };
   state.turnById[id] = turn;
@@ -411,6 +414,22 @@ function recordExtractionEvent(extraction, source, turnIdHint) {
   state.trace.extractionEvents.push(event);
   const turn = getTurn(turnId);
   if (turn) turn.extraction = cloneJsonSafe(extraction);
+}
+
+function recordUsageEvent(usage, source, turnIdHint) {
+  if (!usage || typeof usage !== "object") return;
+  const jobId = String(usage.job_id || usage.jobId || "").trim();
+  const mappedTurnId = jobId && state.jobTurnMap[jobId] ? state.jobTurnMap[jobId] : null;
+  const turnId = turnIdHint ? String(turnIdHint) : mappedTurnId;
+  const event = {
+    eventTime: Date.now(),
+    source: String(source || ""),
+    turnId: turnId || null,
+    usage: cloneJsonSafe(usage),
+  };
+  state.trace.usageEvents.push(event);
+  const turn = getTurn(turnId);
+  if (turn) turn.usage = cloneJsonSafe(usage);
 }
 
 function escapeHtml(s) {
@@ -1359,6 +1378,7 @@ function normalizeTraceForExport(raw) {
       turns: [],
       retrievalEvents: [],
       extractionEvents: [],
+      usageEvents: [],
       configEvents: [],
       lastResult: null,
     };
@@ -1374,6 +1394,7 @@ function normalizeTraceForExport(raw) {
     turns: cloneJsonSafe(raw.turns) || [],
     retrievalEvents: cloneJsonSafe(raw.retrievalEvents || raw.retrieval_events) || [],
     extractionEvents: cloneJsonSafe(raw.extractionEvents || raw.extraction_events) || [],
+    usageEvents: cloneJsonSafe(raw.usageEvents || raw.usage_events) || [],
     configEvents: cloneJsonSafe(raw.configEvents || raw.config_events) || [],
     lastResult: cloneJsonSafe(raw.lastResult != null ? raw.lastResult : raw.last_result),
   };
@@ -1497,6 +1518,7 @@ async function exportSessionJson(sessionId) {
       turns: cloneJsonSafe(traceForExport.turns) || [],
       retrieval_events: cloneJsonSafe(traceForExport.retrievalEvents) || [],
       extraction_events: cloneJsonSafe(traceForExport.extractionEvents) || [],
+      usage_events: cloneJsonSafe(traceForExport.usageEvents) || [],
       extracted_skill_snapshots: cloneJsonSafe(extractedSkillSnapshots) || [],
       config_events: cloneJsonSafe(traceForExport.configEvents) || [],
       last_result: cloneJsonSafe(lastResultForExport),
@@ -1526,12 +1548,18 @@ async function pollSession() {
   try {
     const out = await api("/api/session/poll", { session_id: state.sessionId });
     if (out?.runtime) renderRuntime(out.runtime);
-    const events = out?.events?.extraction;
-    if (Array.isArray(events) && events.length) {
-      for (const ev of events) {
+    const extractionEvents = out?.events?.extraction;
+    if (Array.isArray(extractionEvents) && extractionEvents.length) {
+      for (const ev of extractionEvents) {
         recordExtractionEvent(ev, "poll", null);
       }
-      renderExtraction(events[events.length - 1]);
+      renderExtraction(extractionEvents[extractionEvents.length - 1]);
+    }
+    const usageEvents = out?.events?.usage;
+    if (Array.isArray(usageEvents) && usageEvents.length) {
+      for (const ev of usageEvents) {
+        recordUsageEvent(ev, "poll", null);
+      }
     }
   } catch (_e) {
     // Best-effort: polling should not disrupt chat UX.
@@ -1641,6 +1669,9 @@ function applySendResult(result, streamAssistantIndex, turnId) {
     if (jid) linkExtractionJobToTurn(jid, turnId);
     renderExtraction(result.extraction);
   }
+  if (result?.usage) {
+    recordUsageEvent(result.usage, "result", turnId);
+  }
   if (result?.config) {
     renderConfig(result.config);
     rememberConfig(result.config, "result");
@@ -1655,6 +1686,7 @@ function applySendResult(result, streamAssistantIndex, turnId) {
     chatAppend: cloneJsonSafe(append) || [],
     retrieval: result?.retrieval ? cloneJsonSafe(result.retrieval) : null,
     extraction: result?.extraction ? cloneJsonSafe(result.extraction) : null,
+    usage: result?.usage ? cloneJsonSafe(result.usage) : null,
     error: "",
   };
   finishTurn(turnId, patch);
