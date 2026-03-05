@@ -3,13 +3,13 @@ Skill extraction.
 
 This layer converts raw inputs (messages/events) into SkillCandidate objects:
 - `HeuristicSkillExtractor`: offline heuristic extraction (builds a generic SOP when no LLM is available)
-- `LLMSkillExtractor`: calls an LLM to produce structured JSON, with parsing/repair/fallback
+- `LLMSkillExtractor`: calls an LLM to produce structured JSON, with parsing/repair
 
-LLM extraction fallbacks (strong -> weak):
+LLM extraction strategy (strong -> weak):
 1) parse JSON directly
 2) recover key fields from non-JSON semi-structured text (common in “reasoning” outputs)
 3) ask the model to repair the draft into strict JSON
-4) fall back to heuristic extraction (so ingest won't fail due to unstable LLM outputs)
+4) if still unavailable/unparseable, skip extraction (return empty list)
 """
 
 from __future__ import annotations
@@ -297,24 +297,12 @@ class LLMSkillExtractor:
         except Exception as e:
             if (self._config.extra or {}).get("raise_on_llm_extract_error"):
                 raise RuntimeError(f"LLM extract call failed: {e}") from e
-            return HeuristicSkillExtractor(self._config).extract(
-                user_id=user_id,
-                messages=messages,
-                events=events,
-                max_candidates=max_candidates,
-                hint=hint,
-            )
+            return []
         if not (text or "").strip():
             if (self._config.extra or {}).get("raise_on_llm_extract_error"):
                 raise RuntimeError("LLM returned empty response for skill extraction")
-            # Do not break ingest: fall back to heuristic extraction when the LLM is unstable.
-            return HeuristicSkillExtractor(self._config).extract(
-                user_id=user_id,
-                messages=messages,
-                events=events,
-                max_candidates=max_candidates,
-                hint=hint,
-            )
+            # Network/model instability: skip this extraction attempt.
+            return []
         try:
             parsed = json_from_llm_text(text)
         except Exception as e:
@@ -339,14 +327,7 @@ class LLMSkillExtractor:
                     raise RuntimeError(
                         f"Failed to parse LLM JSON for skill extraction. Output snippet: {snippet}"
                     ) from e
-                # Do not break ingest: if repair fails, fall back to heuristic extraction.
-                return HeuristicSkillExtractor(self._config).extract(
-                    user_id=user_id,
-                    messages=messages,
-                    events=events,
-                    max_candidates=max_candidates,
-                    hint=hint,
-                )
+                return []
             try:
                 parsed = json_from_llm_text(repaired)
             except Exception as e2:
@@ -364,14 +345,7 @@ class LLMSkillExtractor:
                         "Failed to parse LLM JSON for skill extraction after repair. "
                         f"Original snippet: {snippet1} | Repaired snippet: {snippet2}"
                     ) from e2
-                # Final fallback: heuristic extraction.
-                return HeuristicSkillExtractor(self._config).extract(
-                    user_id=user_id,
-                    messages=messages,
-                    events=events,
-                    max_candidates=max_candidates,
-                    hint=hint,
-                )
+                return []
 
         
         skills_obj = parsed.get("skills") if isinstance(parsed, dict) else parsed

@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from autoskill.config import AutoSkillConfig
 from autoskill.management import maintenance as _m
 from autoskill.management.extraction import (
-    HeuristicSkillExtractor,
     LLMSkillExtractor,
     SkillCandidate,
     _candidate_from_freeform_llm_text,
@@ -70,24 +69,12 @@ class OpenClawTrajectorySkillExtractor(LLMSkillExtractor):
         except Exception as e:
             if (self._config.extra or {}).get("raise_on_llm_extract_error"):
                 raise RuntimeError(f"LLM extract call failed: {e}") from e
-            return HeuristicSkillExtractor(self._config).extract(
-                user_id=user_id,
-                messages=messages,
-                events=events,
-                max_candidates=max_candidates,
-                hint=hint,
-            )
+            return []
 
         if not (text or "").strip():
             if (self._config.extra or {}).get("raise_on_llm_extract_error"):
                 raise RuntimeError("LLM returned empty response for skill extraction")
-            return HeuristicSkillExtractor(self._config).extract(
-                user_id=user_id,
-                messages=messages,
-                events=events,
-                max_candidates=max_candidates,
-                hint=hint,
-            )
+            return []
 
         try:
             parsed = json_from_llm_text(text)
@@ -116,13 +103,7 @@ class OpenClawTrajectorySkillExtractor(LLMSkillExtractor):
                     raise RuntimeError(
                         f"Failed to parse LLM JSON for skill extraction. Output snippet: {snippet}"
                     ) from e
-                return HeuristicSkillExtractor(self._config).extract(
-                    user_id=user_id,
-                    messages=messages,
-                    events=events,
-                    max_candidates=max_candidates,
-                    hint=hint,
-                )
+                return []
 
             try:
                 parsed = json_from_llm_text(repaired)
@@ -140,13 +121,7 @@ class OpenClawTrajectorySkillExtractor(LLMSkillExtractor):
                         "Failed to parse LLM JSON for skill extraction after repair. "
                         f"Original snippet: {snippet1} | Repaired snippet: {snippet2}"
                     ) from e2
-                return HeuristicSkillExtractor(self._config).extract(
-                    user_id=user_id,
-                    messages=messages,
-                    events=events,
-                    max_candidates=max_candidates,
-                    hint=hint,
-                )
+                return []
 
         skills_obj = parsed.get("skills") if isinstance(parsed, dict) else parsed
         if not isinstance(skills_obj, list):
