@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import threading
 import uuid
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -289,6 +290,7 @@ def run_service_startup_maintenance(
     sdk: Any,
     default_user_id: str,
     log_prefix: str = "[autoskill][startup]",
+    async_run: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Runs startup offline checks/imports for local store.
@@ -303,8 +305,70 @@ def run_service_startup_maintenance(
     - AUTOSKILL_AUTO_IMPORT_MAX_DEPTH (default: 6)
     - AUTOSKILL_AUTO_REFRESH_SKILLS (default: 1)
     - AUTOSKILL_AUTO_REFRESH_FORCE_VECTORS (default: 0)
-    - AUTOSKILL_AUTO_REFRESH_BLOCKING (default: 1)
+    - AUTOSKILL_AUTO_REFRESH_BLOCKING (default: 0)
+    - AUTOSKILL_STARTUP_MAINTENANCE_ASYNC (default: 1)
     """
+
+    if async_run is None:
+        async_run = _to_bool(
+            os.getenv("AUTOSKILL_STARTUP_MAINTENANCE_ASYNC"),
+            default=True,
+        )
+
+    if async_run:
+        thread_attr = "_autoskill_startup_maintenance_thread"
+        try:
+            existing = getattr(sdk, thread_attr, None)
+        except Exception:
+            existing = None
+        if isinstance(existing, threading.Thread) and existing.is_alive():
+            return {
+                "scheduled": True,
+                "running": True,
+                "background": True,
+                "reason": "already_running",
+            }
+
+        def _job() -> None:
+            try:
+                _run_service_startup_maintenance_sync(
+                    sdk=sdk,
+                    default_user_id=default_user_id,
+                    log_prefix=log_prefix,
+                )
+            except Exception as e:
+                print(f"{log_prefix} startup maintenance async failed: {e}")
+
+        t = threading.Thread(
+            target=_job,
+            name="autoskill-startup-maintenance",
+            daemon=True,
+        )
+        try:
+            setattr(sdk, thread_attr, t)
+        except Exception:
+            pass
+        t.start()
+        return {
+            "scheduled": True,
+            "running": True,
+            "background": True,
+        }
+
+    return _run_service_startup_maintenance_sync(
+        sdk=sdk,
+        default_user_id=default_user_id,
+        log_prefix=log_prefix,
+    )
+
+
+def _run_service_startup_maintenance_sync(
+    *,
+    sdk: Any,
+    default_user_id: str,
+    log_prefix: str = "[autoskill][startup]",
+) -> Dict[str, Any]:
+    """Runs startup maintenance synchronously."""
 
     out: Dict[str, Any] = {
         "ran": False,
@@ -429,7 +493,7 @@ def run_service_startup_maintenance(
         )
         refresh_blocking = _to_bool(
             os.getenv("AUTOSKILL_AUTO_REFRESH_BLOCKING"),
-            default=True,
+            default=False,
         )
         if refresh_enabled:
             stat = _refresh_local_store_runtime(

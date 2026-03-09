@@ -1338,6 +1338,7 @@ def main() -> None:
         sdk=sdk,
         default_user_id=str(interactive_cfg.user_id or "u1"),
         log_prefix="[web]",
+        async_run=True,
     )
 
     chat_llm = None if llm_provider == "mock" else build_llm(llm_cfg)

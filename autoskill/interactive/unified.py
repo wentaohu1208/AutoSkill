@@ -49,6 +49,7 @@ class AutoSkillRuntime:
             sdk=self.sdk,
             default_user_id=str(self.interactive_config.user_id or "u1"),
             log_prefix="[runtime]",
+            async_run=True,
         )
 
         if query_rewriter is not None:

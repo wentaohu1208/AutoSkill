@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol
 
 from ..config import AutoSkillConfig
@@ -25,6 +25,7 @@ from ..llm.factory import build_llm
 from ..models import SkillExample
 from ..utils.json import json_from_llm_text
 from ..utils.redact import redact_obj
+from ..utils.skill_resources import normalize_resource_rel_path
 from ..utils.text import keywords
 
 _ACK_LINES = {
@@ -66,6 +67,7 @@ class SkillCandidate:
     triggers: List[str]
     tags: List[str]
     examples: List[SkillExample]
+    files: Dict[str, str] = field(default_factory=dict)
     confidence: float = 0.6
     source: Optional[Dict[str, Any]] = None
 
@@ -134,12 +136,7 @@ class HeuristicSkillExtractor:
                 "Use when you want to reuse a previously mentioned method/SOP.",
             ],
             tags=kws,
-            examples=[
-                SkillExample(
-                    input="Break this into best-practice, executable steps.",
-                    output=None,
-                )
-            ],
+            examples=[],
             confidence=0.4,
             source=_source_obj(self._config, messages=messages, events=events),
         )
@@ -213,6 +210,7 @@ class LLMSkillExtractor:
             "- Never mix constraints from different work items.\n"
             "- DATA.retrieved_reference is only identity context (update-like wording vs distinct-capability wording), never extraction evidence.\n"
             "- DATA.retrieved_reference.triggers (if present) are intent hints for identity matching only; do not treat them as new evidence.\n"
+            "- DATA.retrieved_reference.resource_paths (if present) are capability hints only; do not copy path names unless user-evidenced and reusable.\n"
             "- If retrieved_reference is null/None, treat as no selected prior skill.\n"
             "- If extraction gates fail, output {\"skills\": []} regardless of similarity.\n"
             "- SAME capability requires alignment on objective + deliverable/channel + operation class + acceptance criteria.\n"
@@ -256,11 +254,16 @@ class LLMSkillExtractor:
             "### 6) OUTPUT REQUIREMENTS AND FINAL CHECKS\n"
             "- Output ONLY strict JSON parseable by json.loads.\n"
             "- Schema: {\"skills\": [...]} with at most {max_candidates} items.\n"
-            "- Language consistency: all fields (name, description, prompt, triggers, tags, examples) must match user instruction language.\n"
+            "- Optional per-skill resource fields are allowed when useful: `resources` and/or `files`.\n"
+            "  - `resources` shape: {\"scripts\": [...], \"references\": [...], \"assets\": [...]}.\n"
+            "  - `files` shape: {\"scripts/...\": \"...\", \"references/...\": \"...\", \"assets/...\": \"...\"}.\n"
+            "  - Keep resource payload concise and reusable; avoid large pasted documents.\n"
+            "  - Prefer stable path + minimal template/snippet; do not dump full raw materials.\n"
+            "- Language consistency: all fields (name, description, prompt, triggers, tags) must match user instruction language.\n"
             "  - Example: Chinese input -> all fields in Chinese (for example: \"政府报告撰写规范\"); English input -> all fields  in English (for example: \"government-report-writing-policy\").\n"
             "- Generalize/de-identify aggressively; keep durable reusable procedures/constraints only.\n"
             "- Final checks before output:\n"
-            "  - no case-specific proper nouns/one-off business facts in name/description/prompt/triggers/examples;\n"
+            "  - no case-specific proper nouns/one-off business facts in name/description/prompt/triggers/tags;\n"
             "  - name/description/# Goal describe capability invariants, not topical payload;\n"
             "  - major prompt constraints are user-evidenced;\n"
             "  - major constraints belong to one recent coherent work item;\n"
@@ -276,9 +279,9 @@ class LLMSkillExtractor:
             "- # Goal: transformation objective + output contract only; do not embed long topical payload.\n"
             "- Content strategy: keep user-specific requirements; do not add unrequested generic standards.\n"
             "- Resources: if needed, reference reusable assets as 'Execute script: scripts/...' or 'Read reference: references/...'.\n"
+            "- Optional resources/files fields: include only when needed; use safe relative paths under scripts/, references/, or assets/.\n"
             "- triggers: 3-5 short intent phrases; include platform/channel intent when relevant; dedupe near-duplicate paraphrases.\n"
             "- tags: 1-6 keywords; include canonical domain/platform tags when user-evidenced; remove redundant synonyms.\n"
-            "- examples: 0-3 short de-identified inputs.\n"
             "- confidence: 0.0-1.0 (lower for borderline-generic skills).\n"
             "\n"
             "### 8) MINDSET QUICK CHECKS\n"
@@ -378,6 +381,7 @@ class LLMSkillExtractor:
             "- Skills are SKILL.md onboarding guides: keep only reusable, non-obvious procedure/preferences.\n"
             "- DATA.retrieved_reference is auxiliary identity context (update-vs-new), not extraction evidence.\n"
             "- DATA.retrieved_reference.triggers (if present) are intent hints for identity matching only; not new evidence.\n"
+            "- DATA.retrieved_reference.resource_paths (if present) are capability hints only; do not copy paths unless user-evidenced and reusable.\n"
             "- If DATA.retrieved_reference is null/None, treat as no selected prior skill; do not force update wording.\n"
             "- If user evidence is insufficient, return {\"skills\": []} even when retrieved_reference is similar.\n"
             "- Keep only skills likely to be reused by this same user in future similar tasks; if repeat-use likelihood is low, return {\"skills\": []}.\n"
@@ -396,7 +400,7 @@ class LLMSkillExtractor:
             "- [C] Content construction and field intent\n"
             "- name: concise, searchable, and self-explanatory; MUST directly state what the skill does by encoding primary user intent + task/action + topic/domain, and include platform/channel context when user-evidenced (for example, WeChat Official Account, Xiaohongshu, Weibo/Sina, Douyin, Twitter/X, or other platforms); the name should be understandable without reading description/prompt; kebab-case for English; use reusable labels, avoid vague placeholders (for example, 'general-helper', 'new-skill', 'optimization-skill'), and avoid one-off entities.\n"
             "- description: 1-2 sentences, third person; include WHEN to use; include domain/platform scope when relevant; avoid instance-specific facts.\n"
-            "- prompt: ALWAYS English; imperative/infinitive; numbered steps + checks + output format; no conversation references.\n"
+            "- prompt: follow dominant input language; imperative/infinitive; numbered steps + checks + output format; no conversation references.\n"
             "- Capability-vs-payload: keep reusable method/constraints; drop this-instance topical payload.\n"
             "- In # Goal, keep transformation objective/output contract only; no long topic-specific content.\n"
             "- If runtime content is needed, use placeholders (for example: <SOURCE_CONTENT>, <TARGET_TOPIC>, <KEY_POINTS>).\n"
@@ -405,11 +409,16 @@ class LLMSkillExtractor:
             "- Keep reusable implementation/output policies (language/tooling, allowed/disallowed tech, code-vs-explanation ratio, comment density, strict output form, format/layout constraints, hard safety bounds, mandatory SOP steps).\n"
             "- triggers/tags: preserve user-evidenced domain/platform intent with canonical labels; dedupe near-duplicates; never include account-specific names.\n"
             "- prompt may include short \"Bundled resources (optional)\" suggestions (scripts/references/assets), not large pasted content.\n"
+            "- Optional structured resources/files are allowed when useful:\n"
+            "  - resources: {\"scripts\": [...], \"references\": [...], \"assets\": [...]}.\n"
+            "  - files: {\"scripts/...\": \"...\", \"references/...\": \"...\", \"assets/...\": \"...\"}.\n"
+            "- Keep resource payload concise and reusable; avoid long raw document dumps.\n"
+            "- Use safe relative paths only (no absolute paths, no local machine/user-specific paths).\n"
             "- [D] De-identification and portability\n"
             "- Remove case-specific entities (org/team/person, addresses, project/product/repo, ticket/account IDs, URLs/emails/phones, exact dates/budgets/contracts).\n"
             "- Keep only portable capability constraints; if generic after de-identification, return {\"skills\": []}.\n"
             "- [E] Output language and JSON validity\n"
-            "- Language: name/description/prompt/triggers/tags/examples match dominant input language.\n"
+            "- Language: name/description/prompt/triggers/tags match dominant input language.\n"
             "- Language example: Chinese input -> all fields Chinese (for example: \"代码注释风格约束\"); English input -> all fields English (for example: \"code-comment-style-constraints\").\n"
             "- JSON validity: escape newlines inside strings as \\n.\n"
         )
@@ -442,7 +451,6 @@ def _candidate_from_freeform_llm_text(
         "prompt": _find_section_index(lines, ["prompt", "instructions"]),
         "triggers": _find_section_index(lines, ["triggers"]),
         "tags": _find_section_index(lines, ["tags"]),
-        "examples": _find_section_index(lines, ["examples"]),
     }
 
     def slice_until(idx: Optional[int], stop_keys: List[str]) -> List[str]:
@@ -464,7 +472,6 @@ def _candidate_from_freeform_llm_text(
         "instructions",
         "triggers",
         "tags",
-        "examples",
     ]
 
     name_block = slice_until(sections["name"], stop_any)
@@ -475,7 +482,7 @@ def _candidate_from_freeform_llm_text(
 
     prompt_block = slice_until(
         sections["prompt"],
-        ["triggers", "tags", "examples"],
+        ["triggers", "tags"],
     )
     prompt_lines = _drop_leading_markers(
         prompt_block,
@@ -483,12 +490,10 @@ def _candidate_from_freeform_llm_text(
     )
     instructions = "\n".join(prompt_lines).strip()
 
-    trig_block = slice_until(
-        sections["triggers"], ["tags", "examples"]
-    )
+    trig_block = slice_until(sections["triggers"], ["tags"])
     triggers = _extract_bullets(trig_block)[:7]
 
-    tags_block = slice_until(sections["tags"], ["examples"])
+    tags_block = slice_until(sections["tags"], [])
     tags = _extract_bullets(tags_block)[:6]
 
     confidence = 0.6
@@ -508,7 +513,6 @@ def _candidate_from_freeform_llm_text(
             "instructions",
             "triggers",
             "tags",
-            "examples",
             "confidence",
             "analysis",
             "draft",
@@ -626,7 +630,7 @@ def _extract_bullets(block: List[str]) -> List[str]:
             continue
         if any(
             s.lower().startswith(p)
-            for p in ["tags", "triggers", "examples", "description"]
+            for p in ["tags", "triggers", "description"]
         ):
             continue
         out.append(s)
@@ -648,6 +652,175 @@ def _drop_leading_markers(lines: List[str], *, markers: List[str]) -> List[str]:
     return trimmed
 
 
+_RESOURCE_ROOTS = {"scripts", "references", "assets"}
+_MAX_CANDIDATE_FILES = 16
+_MAX_CANDIDATE_FILE_CHARS = 20_000
+
+
+def _normalize_candidate_resource_path(path: str, *, default_root: str = "") -> str:
+    """Normalizes one extracted resource path to a safe relative path."""
+
+    rel = normalize_resource_rel_path(path)
+    if not rel:
+        return ""
+    root = str(default_root or "").strip().lower()
+    parts = rel.split("/")
+    top = str(parts[0] or "").strip().lower() if parts else ""
+    if top in _RESOURCE_ROOTS:
+        return rel
+    if root in _RESOURCE_ROOTS:
+        leaf = str(parts[-1] or "").strip()
+        if not leaf:
+            return ""
+        return f"{root}/{leaf}"
+    return ""
+
+
+def _limit_resource_content(text: str) -> str:
+    """Trims extremely long resource payloads to keep extraction stable."""
+
+    s = str(text or "")
+    if len(s) <= _MAX_CANDIDATE_FILE_CHARS:
+        return s
+    return s[:_MAX_CANDIDATE_FILE_CHARS].rstrip() + "\n"
+
+
+def _add_candidate_file(
+    out: Dict[str, str],
+    *,
+    path: str,
+    content: str,
+    default_root: str = "",
+) -> None:
+    """Adds one candidate resource file with path normalization and deduplication."""
+
+    if len(out) >= _MAX_CANDIDATE_FILES:
+        return
+    rel = _normalize_candidate_resource_path(path, default_root=default_root)
+    if not rel:
+        return
+    value = _limit_resource_content(content)
+    old = out.get(rel)
+    # Prefer non-empty and longer content for the same path.
+    if old is None or (not old and value) or (value and len(value) > len(old)):
+        out[rel] = value
+
+
+def _extract_content_from_obj(obj: Dict[str, Any]) -> str:
+    """Reads content-like fields from one resource object."""
+
+    for key in ("content", "text", "body", "template", "snippet"):
+        if key in obj:
+            val = obj.get(key)
+            if isinstance(val, str):
+                return val
+            if val is not None:
+                return str(val)
+    return ""
+
+
+def _extract_path_from_obj(obj: Dict[str, Any]) -> str:
+    """Reads path-like fields from one resource object."""
+
+    for key in ("path", "file", "file_path", "name"):
+        val = obj.get(key)
+        if val is None:
+            continue
+        s = str(val).strip()
+        if s:
+            return s
+    return ""
+
+
+def _ingest_candidate_file_payload(
+    out: Dict[str, str],
+    payload: Any,
+    *,
+    default_root: str = "",
+    path_hint: str = "",
+) -> None:
+    """Ingests flexible `files/resources` payloads into a normalized files mapping."""
+
+    if len(out) >= _MAX_CANDIDATE_FILES:
+        return
+
+    if isinstance(payload, str):
+        # Path-only shorthand.
+        _add_candidate_file(out, path=payload, content="", default_root=default_root)
+        return
+
+    if isinstance(payload, dict):
+        keys = {str(k).strip().lower() for k in payload.keys()}
+        looks_like_entry = any(
+            k in keys for k in {"path", "file", "file_path", "name", "content", "text", "body", "template", "snippet"}
+        )
+        if looks_like_entry:
+            path = _extract_path_from_obj(payload) or str(path_hint or "")
+            content = _extract_content_from_obj(payload)
+            _add_candidate_file(out, path=path, content=content, default_root=default_root)
+            return
+
+        for k, v in payload.items():
+            if len(out) >= _MAX_CANDIDATE_FILES:
+                break
+            child_hint = str(k or "")
+            if isinstance(v, (str, int, float, bool)) or v is None:
+                _add_candidate_file(
+                    out,
+                    path=child_hint,
+                    content=("" if v is None else str(v)),
+                    default_root=default_root,
+                )
+                continue
+            _ingest_candidate_file_payload(
+                out,
+                v,
+                default_root=default_root,
+                path_hint=child_hint,
+            )
+        return
+
+    if isinstance(payload, list):
+        for item in payload:
+            if len(out) >= _MAX_CANDIDATE_FILES:
+                break
+            _ingest_candidate_file_payload(
+                out,
+                item,
+                default_root=default_root,
+                path_hint=path_hint,
+            )
+
+
+def _candidate_files_from_obj(obj: Dict[str, Any]) -> Dict[str, str]:
+    """Parses optional `files/resources` from extracted candidate JSON."""
+
+    out: Dict[str, str] = {}
+
+    files_raw = obj.get("files")
+    if files_raw is not None:
+        _ingest_candidate_file_payload(out, files_raw)
+
+    resources = obj.get("resources")
+    if isinstance(resources, dict):
+        for key in ("scripts", "references", "assets"):
+            bucket = resources.get(key)
+            if bucket is None:
+                continue
+            _ingest_candidate_file_payload(out, bucket, default_root=key)
+    elif resources is not None:
+        _ingest_candidate_file_payload(out, resources)
+
+    # Also accept top-level shorthand buckets.
+    for key in ("scripts", "references", "assets"):
+        bucket = obj.get(key)
+        if bucket is None:
+            continue
+        _ingest_candidate_file_payload(out, bucket, default_root=key)
+
+    return out
+
+
 def _candidate_from_obj(obj: Any, *, source: Optional[Dict[str, Any]]) -> Optional[SkillCandidate]:
     """Run candidate from obj."""
     if not isinstance(obj, dict):
@@ -660,22 +833,7 @@ def _candidate_from_obj(obj: Any, *, source: Optional[Dict[str, Any]]) -> Option
 
     triggers = [str(t).strip() for t in (obj.get("triggers") or []) if str(t).strip()]
     tags = [str(t).strip() for t in (obj.get("tags") or []) if str(t).strip()]
-    examples_in = obj.get("examples") or []
-    examples: List[SkillExample] = []
-    if isinstance(examples_in, list):
-        for e in examples_in[:6]:
-            if not isinstance(e, dict):
-                continue
-            inp = str(e.get("input") or "").strip()
-            if not inp:
-                continue
-            examples.append(
-                SkillExample(
-                    input=inp,
-                    output=(str(e.get("output")).strip() if e.get("output") else None),
-                    notes=(str(e.get("notes")).strip() if e.get("notes") else None),
-                )
-            )
+    files = _candidate_files_from_obj(obj)
     conf_raw = obj.get("confidence")
     try:
         confidence = float(conf_raw) if conf_raw is not None else 0.6
@@ -688,7 +846,8 @@ def _candidate_from_obj(obj: Any, *, source: Optional[Dict[str, Any]]) -> Option
         instructions=instructions,
         triggers=triggers,
         tags=tags,
-        examples=examples,
+        examples=[],
+        files=files,
         confidence=max(0.0, min(1.0, confidence)),
         source=source,
     )

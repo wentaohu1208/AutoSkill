@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ...embeddings.base import EmbeddingModel
 from ...models import Skill, SkillHit, SkillStatus
+from ...utils.skill_resources import extract_skill_resource_paths
 from ..identity import identity_desc_norm_from_fields, normalize_identity_text
 from .hybrid_rank import blend_scores, bm25_normalized_scores
 from .base import SkillStore
@@ -34,15 +35,19 @@ def _cosine(a: List[float], b: List[float]) -> float:
 def _skill_to_text(skill: Skill) -> str:
     # Use structured fields to keep vectors stable across versions/ids and avoid
     # coupling similarity to artifact frontmatter formatting.
+    # `examples` are intentionally excluded to avoid duplicated/noisy indexing signals.
     """Run skill to text."""
     triggers = "\n".join(skill.triggers or [])
     tags = " ".join(skill.tags or [])
+    resource_paths = extract_skill_resource_paths(skill, max_items=32)
+    resources = "\n".join(resource_paths)
     return (
         f"Name: {skill.name}\n"
         f"Description: {skill.description}\n"
         f"Instructions: {skill.instructions}\n"
         f"Triggers:\n{triggers}\n"
         f"Tags: {tags}\n"
+        f"Resources:\n{resources}\n"
     )
 
 
