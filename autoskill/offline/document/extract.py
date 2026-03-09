@@ -1,23 +1,42 @@
 """
-Offline document extraction.
+Staged offline document pipeline entrypoints.
 
-Extracts reusable skills from books/papers/manuals by chunking document text and
-feeding chunks into the existing AutoSkill ingest pipeline.
+This module wires the document pipeline into the existing AutoSkill SDK style:
+- `extract_from_doc(...)` remains the programmatic entrypoint
+- `main()` exposes a small CLI with stage-oriented commands
+
+Commands:
+- `build`: full document -> evidence -> capability -> skill -> registry/store flow
+- `ingest`: only normalize/import documents and run incremental checks
+- `extract`: stop after EvidenceUnit extraction
+- `induce`: stop after CapabilitySpec induction
+- `compile`: stop after SkillSpec compilation without persisting registry/store updates
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
-from typing import Any, Dict, List, Optional
+import sys
+from typing import Any, Dict, List, Optional, Sequence
 
 from autoskill import AutoSkill, AutoSkillConfig
-from .file_loader import data_to_text_unit, load_file_units
-from .prompt_runtime import activate_offline_prompt_runtime
+
+from .common import StageLogger
+from .models import CapabilitySpec, DocumentRecord, EvidenceUnit, SkillSpec, VersionState
+from .pipeline import DocumentBuildPipeline, DocumentBuildResult, build_default_document_pipeline
 from ..provider_config import (
     build_embeddings_config as _build_provider_embeddings_config,
     build_llm_config as _build_provider_llm_config,
     pick_default_provider as _pick_default_provider,
+)
+
+_DOCUMENT_CLI_EXAMPLES = (
+    "Examples:\n"
+    "  autoskill offline document build --file ./paper.md --dry-run\n"
+    "  autoskill offline document ingest --file ./docs/\n"
+    "  autoskill offline document compile --file ./manual.md --json"
 )
 
 
@@ -33,194 +52,156 @@ def extract_from_doc(
     continue_on_error: bool = True,
     max_chars_per_chunk: int = 6000,
     overlap_chars: int = 300,
+    domain: str = "",
+    source_type: str = "document",
+    registry_root: str = "",
+    dry_run: bool = False,
+    target_state: Optional[VersionState] = None,
+    logger: StageLogger = None,
 ) -> Dict[str, Any]:
     """
-    Runs offline extraction from heterogeneous offline files/directories.
+    Runs the staged offline document pipeline and returns a compact summary.
+
+    `max_chars_per_chunk` and `overlap_chars` are accepted for backward
+    compatibility with the previous chunk-based implementation. The staged
+    pipeline keeps them unused for now because extraction operates on document
+    sections/evidence blocks rather than SDK ingest chunks.
     """
 
-    abs_input = ""
-    units: List[Dict[str, str]] = []
-    if data is not None:
-        unit_title = str(title or "").strip() or "inline_data"
-        units = [data_to_text_unit(data, title=unit_title)]
-    elif str(file_path or "").strip():
-        units, abs_input = load_file_units(str(file_path))
-    else:
-        raise ValueError("extract_from_doc requires data or file_path")
-    if not units:
-        return {
-            "total_units": 0,
-            "total_chunks": 0,
-            "processed_chunks": 0,
-            "failed_chunks": 0,
-            "upserted_count": 0,
-            "skills": [],
-            "errors": [],
-            "source_file": abs_input or None,
-        }
+    _ = max_chars_per_chunk
+    _ = overlap_chars
 
-    if str(title or "").strip():
-        default_title = str(title).strip()
-    elif abs_input:
-        default_title = os.path.basename(abs_input)
-    else:
-        default_title = "document_corpus"
+    md = dict(metadata or {})
+    md.setdefault("channel", "offline_extract_from_doc")
+    md.setdefault("source_type", str(source_type or "").strip() or "document")
+    if hint and str(hint).strip():
+        md.setdefault("hint", str(hint).strip())
 
-    max_chars = max(800, int(max_chars_per_chunk or 6000))
-    overlap = max(0, min(max_chars // 2, int(overlap_chars or 0)))
-    base_md = dict(metadata or {})
-    base_md.setdefault("channel", "offline_extract_from_doc")
-    base_md.setdefault("source_type", "document")
-    if abs_input:
-        base_md.setdefault("source_file", abs_input)
+    pipeline = build_default_document_pipeline(
+        sdk=sdk,
+        registry_root=str(registry_root or "").strip(),
+        logger=logger,
+    )
+    result = pipeline.build(
+        user_id=str(user_id or "").strip() or "u1",
+        data=data,
+        file_path=str(file_path or "").strip(),
+        title=str(title or "").strip(),
+        source_type=str(source_type or "").strip() or "document",
+        domain=str(domain or "").strip(),
+        metadata=md,
+        continue_on_error=bool(continue_on_error),
+        dry_run=bool(dry_run),
+        target_state=target_state,
+    )
+    return _build_summary(pipeline=pipeline, result=result)
 
-    processed = 0
-    failed = 0
-    errors: List[Dict[str, Any]] = []
-    upserted_by_id: Dict[str, Any] = {}
-    total_chunks = 0
 
-    with activate_offline_prompt_runtime(sdk=sdk, channel="offline_extract_from_doc"):
-        for unit_idx, unit in enumerate(units):
-            unit_title = str(unit.get("title") or "").strip() or default_title
-            unit_text = str(unit.get("text") or "").strip()
-            unit_source_file = str(unit.get("source_file") or "").strip()
-            if not unit_text:
-                continue
-            chunks = _split_text(unit_text, max_chars=max_chars, overlap=overlap)
-            total_chunks += len(chunks)
-            for chunk_idx, chunk in enumerate(chunks):
-                msg = _build_doc_message(title=unit_title, chunk=chunk)
-                md = dict(base_md)
-                md["unit_index"] = int(unit_idx)
-                md["chunk_index"] = int(chunk_idx)
-                md["unit_title"] = unit_title
-                if unit_source_file:
-                    md["source_file"] = unit_source_file
-                try:
-                    updated = sdk.ingest(
-                        user_id=str(user_id or "").strip() or "u1",
-                        messages=[{"role": "user", "content": msg}],
-                        events=None,
-                        metadata=md,
-                        hint=(str(hint).strip() if hint and str(hint).strip() else None),
-                    )
-                    processed += 1
-                    for s in (updated or []):
-                        sid = str(getattr(s, "id", "") or "")
-                        if sid:
-                            upserted_by_id[sid] = s
-                except Exception as e:
-                    failed += 1
-                    errors.append(
-                        {
-                            "unit_index": unit_idx,
-                            "chunk_index": chunk_idx,
-                            "error": str(e),
-                        }
-                    )
-                    if not continue_on_error:
-                        raise
+def _plain_skill_spec(spec: SkillSpec) -> Dict[str, Any]:
+    """Serializes one SkillSpec into a compact CLI/API summary."""
 
     return {
-        "total_units": len(units),
-        "total_chunks": total_chunks,
-        "processed_chunks": processed,
-        "failed_chunks": failed,
-        "upserted_count": len(upserted_by_id),
-        "skills": [_skill_to_plain_dict(s) for s in upserted_by_id.values()],
-        "errors": errors,
-        "source_file": abs_input or None,
+        "skill_id": spec.skill_id,
+        "capability_id": spec.capability_id,
+        "name": spec.name,
+        "description": spec.description,
+        "version": spec.version,
+        "status": spec.status.value,
+        "references": list(spec.references or []),
     }
 
 
-def _build_doc_message(*, title: str, chunk: str) -> str:
-    """Run build doc message."""
-    return (
-        "Document source for offline skill learning.\n"
-        f"Title: {title}\n"
-        "Extract reusable capability/policy/workflow skills from this excerpt.\n"
-        "Document excerpt:\n"
-        f"{chunk}"
+def _plain_document(record: DocumentRecord) -> Dict[str, Any]:
+    """Serializes one DocumentRecord into a compact summary."""
+
+    return {
+        "doc_id": record.doc_id,
+        "title": record.title,
+        "source_type": record.source_type,
+        "domain": record.domain,
+        "content_hash": record.content_hash,
+        "section_count": len(record.sections or []),
+    }
+
+
+def _plain_evidence(unit: EvidenceUnit) -> Dict[str, Any]:
+    """Serializes one EvidenceUnit into a compact summary."""
+
+    return {
+        "evidence_id": unit.evidence_id,
+        "doc_id": unit.doc_id,
+        "claim_type": unit.claim_type,
+        "section": unit.section,
+        "task_family": unit.task_family,
+        "method_family": unit.method_family,
+        "confidence": unit.confidence,
+        "normalized_claim": unit.normalized_claim,
+    }
+
+
+def _plain_capability(spec: CapabilitySpec) -> Dict[str, Any]:
+    """Serializes one CapabilitySpec into a compact summary."""
+
+    return {
+        "capability_id": spec.capability_id,
+        "title": spec.title,
+        "domain": spec.domain,
+        "task_family": spec.task_family,
+        "method_family": spec.method_family,
+        "stage": spec.stage,
+        "risk_class": spec.risk_class,
+        "version": spec.version,
+        "evidence_refs": list(spec.evidence_refs or []),
+    }
+
+
+def _build_summary(*, pipeline: DocumentBuildPipeline, result: DocumentBuildResult) -> Dict[str, Any]:
+    """Builds a stable plain-dict response from a DocumentBuildResult."""
+
+    skills_out: List[Dict[str, Any]]
+    if result.registration.upserted_store_skills:
+        skills_out = list(result.registration.upserted_store_skills)
+    else:
+        skills_out = [_plain_skill_spec(spec) for spec in list(result.registration.skill_specs or [])]
+
+    errors = (
+        list(result.ingest.errors)
+        + list(result.evidence.errors)
+        + list(result.capabilities.errors)
+        + list(result.skills.errors)
+        + list(result.registration.errors)
     )
-
-
-def _skill_to_plain_dict(skill: Any) -> Dict[str, Any]:
-    """Run skill to plain dict."""
-    try:
-        examples = []
-        for e in list(getattr(skill, "examples", []) or []):
-            examples.append(
-                {
-                    "input": str(getattr(e, "input", "") or ""),
-                    "output": (str(getattr(e, "output", "") or "") or None),
-                    "notes": (str(getattr(e, "notes", "") or "") or None),
-                }
-            )
-        return {
-            "id": str(getattr(skill, "id", "") or ""),
-            "name": str(getattr(skill, "name", "") or ""),
-            "description": str(getattr(skill, "description", "") or ""),
-            "version": str(getattr(skill, "version", "") or ""),
-            "triggers": list(getattr(skill, "triggers", []) or []),
-            "tags": list(getattr(skill, "tags", []) or []),
-            "examples": examples,
-        }
-    except Exception:
-        return {"id": "", "name": "", "description": "", "version": ""}
-
-
-def _split_text(text: str, *, max_chars: int, overlap: int) -> List[str]:
-    """
-    Paragraph-aware chunking with character overlap.
-    """
-
-    src = str(text or "").strip()
-    if not src:
-        return []
-    if len(src) <= max_chars:
-        return [src]
-
-    paras = [p.strip() for p in src.split("\n\n") if p.strip()]
-    if not paras:
-        paras = [src]
-
-    chunks: List[str] = []
-    cur = ""
-    for p in paras:
-        if not cur:
-            cur = p
-            continue
-        nxt = f"{cur}\n\n{p}"
-        if len(nxt) <= max_chars:
-            cur = nxt
-            continue
-        chunks.append(cur)
-        if overlap > 0:
-            tail = cur[-overlap:]
-            cur = f"{tail}\n\n{p}"
-        else:
-            cur = p
-        if len(cur) > max_chars:
-            # Hard-split extremely long paragraph.
-            for i in range(0, len(cur), max_chars):
-                part = cur[i : i + max_chars].strip()
-                if part:
-                    chunks.append(part)
-            cur = ""
-    if cur.strip():
-        chunks.append(cur.strip())
-    return chunks
+    total_units = len(result.ingest.documents) + len(result.ingest.skipped_documents)
+    return {
+        "dry_run": bool(result.dry_run),
+        "registry_root": pipeline.registry.root_dir,
+        "source_file": result.ingest.source_file,
+        "total_units": total_units,
+        "total_documents": len(result.ingest.documents),
+        "skipped_documents": len(result.ingest.skipped_documents),
+        "total_evidence_units": len(result.evidence.evidence_units),
+        "total_capabilities": len(result.capabilities.capabilities),
+        "total_skill_specs": len(result.skills.skill_specs),
+        "lifecycle_events": len(result.registration.lifecycles),
+        "change_events": len(result.registration.change_logs),
+        "version_history_entries": len(result.registration.version_history),
+        "provenance_links": len(result.registration.provenance_links),
+        "upserted_count": len(result.registration.upserted_store_skills),
+        "skills": skills_out,
+        "errors": errors,
+    }
 
 
 def _env(name: str, default: str = "") -> str:
-    """Run env."""
+    """Reads one env var with empty-string fallback semantics."""
+
     val = os.getenv(name)
     return val if val is not None and val.strip() else default
 
 
 def _build_llm_config(args: argparse.Namespace) -> Dict[str, Any]:
-    """Run build llm config."""
+    """Builds the LLM provider config from CLI args."""
+
     provider = str(args.llm_provider or "mock").strip() or "mock"
     model = str(args.llm_model or "").strip() or None
     cfg = _build_provider_llm_config(provider, model=model)
@@ -234,7 +215,8 @@ def _build_llm_config(args: argparse.Namespace) -> Dict[str, Any]:
 
 
 def _build_embeddings_config(args: argparse.Namespace) -> Dict[str, Any]:
-    """Run build embeddings config."""
+    """Builds the embeddings provider config from CLI args."""
+
     llm_provider = str(args.llm_provider or "mock").strip().lower() or "mock"
     provider = str(args.embeddings_provider or "").strip()
     model = str(args.embeddings_model or "").strip() or None
@@ -256,7 +238,8 @@ def _build_embeddings_config(args: argparse.Namespace) -> Dict[str, Any]:
 
 
 def _build_sdk_from_args(args: argparse.Namespace) -> AutoSkill:
-    """Run build sdk from args."""
+    """Builds an AutoSkill SDK for document pipeline commands."""
+
     llm_cfg = _build_llm_config(args)
     emb_cfg = _build_embeddings_config(args)
     store_cfg: Dict[str, Any] = {"provider": "local"}
@@ -267,77 +250,425 @@ def _build_sdk_from_args(args: argparse.Namespace) -> AutoSkill:
             llm=llm_cfg,
             embeddings=emb_cfg,
             store=store_cfg,
+            maintenance_strategy="heuristic" if str(args.maintenance_strategy or "").strip() == "heuristic" else "llm",
         )
     )
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Run build parser."""
-    parser = argparse.ArgumentParser(description="Extract skills from offline document corpora.")
-    parser.add_argument("--file", required=True, help="Path to a file or directory.")
+def _coerce_state(value: str, *, default: VersionState) -> VersionState:
+    """Parses a CLI lifecycle state into VersionState."""
+
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return default
+    return VersionState(raw)
+
+
+def _build_logger(*, quiet: bool) -> StageLogger:
+    """Builds a simple stdout logger for stage progress lines."""
+
+    if quiet:
+        return None
+
+    def _emit(message: str) -> None:
+        print(str(message), flush=True)
+
+    return _emit
+
+
+def _build_pipeline_from_args(args: argparse.Namespace) -> DocumentBuildPipeline:
+    """Builds the default document pipeline from CLI args."""
+
+    sdk = _build_sdk_from_args(args)
+    return build_default_document_pipeline(
+        sdk=sdk,
+        registry_root=str(args.registry_root or "").strip(),
+        logger=_build_logger(quiet=bool(args.quiet)),
+    )
+
+
+def _base_metadata(args: argparse.Namespace) -> Dict[str, Any]:
+    """Builds shared metadata for CLI-triggered pipeline runs."""
+
+    md = {"channel": "offline_extract_from_doc", "source_type": str(args.source_type or "").strip() or "document"}
+    if str(args.hint or "").strip():
+        md["hint"] = str(args.hint).strip()
+    return md
+
+
+def _add_common_args(parser: argparse.ArgumentParser) -> None:
+    """Registers shared CLI arguments for all document pipeline commands."""
+
+    parser.add_argument("--file", required=True, help="Path to a document file or directory.")
     parser.add_argument("--user-id", default="u1", help="Target user id.")
     parser.add_argument("--title", default="", help="Optional document title override.")
-    parser.add_argument("--hint", default="", help="Optional extraction hint.")
-    parser.add_argument("--max-chars-per-chunk", type=int, default=6000)
-    parser.add_argument("--overlap-chars", type=int, default=300)
+    parser.add_argument("--domain", default="", help="Optional domain hint, e.g. chemistry or geography.")
+    parser.add_argument("--source-type", default="document", help="Generic source type label.")
+    parser.add_argument("--hint", default="", help="Optional extraction hint passed through metadata.")
+    parser.add_argument("--dry-run", action="store_true", help="Run versioning without persisting registry or store changes.")
+    parser.add_argument(
+        "--registry-root",
+        default=_env("AUTOSKILL_DOCUMENT_REGISTRY_ROOT", ""),
+        help="Override the document registry root. Default: <store>/.autoskill/document_registry.",
+    )
+    parser.add_argument("--quiet", action="store_true", help="Disable stage log output.")
+    parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON instead of text summary.")
+    parser.add_argument("--max-chars-per-chunk", type=int, default=6000, help=argparse.SUPPRESS)
+    parser.add_argument("--overlap-chars", type=int, default=300, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--maintenance-strategy",
+        default="heuristic",
+        choices=["heuristic", "llm"],
+        help="Skill store maintenance strategy used when build persists compiled skills.",
+    )
     parser.add_argument(
         "--llm-provider",
         default=_env("AUTOSKILL_LLM_PROVIDER", _pick_default_provider()),
         help="mock|generic|glm|internlm|dashscope|openai|anthropic",
     )
-    parser.add_argument("--llm-model", default=_env("AUTOSKILL_LLM_MODEL", ""))
-    parser.add_argument("--llm-base-url", default=_env("AUTOSKILL_LLM_BASE_URL", ""))
-    parser.add_argument("--llm-api-key", default=_env("AUTOSKILL_LLM_API_KEY", ""))
-    parser.add_argument("--auth-mode", default=_env("AUTOSKILL_LLM_AUTH_MODE", ""))
+    parser.add_argument("--llm-model", default=_env("AUTOSKILL_LLM_MODEL", ""), help="Optional LLM model id.")
+    parser.add_argument("--llm-base-url", default=_env("AUTOSKILL_LLM_BASE_URL", ""), help="Optional LLM base URL.")
+    parser.add_argument("--llm-api-key", default=_env("AUTOSKILL_LLM_API_KEY", ""), help="Optional LLM API key.")
+    parser.add_argument("--auth-mode", default=_env("AUTOSKILL_LLM_AUTH_MODE", ""), help="Optional LLM auth mode.")
     parser.add_argument(
         "--embeddings-provider",
         default=_env("AUTOSKILL_EMBEDDINGS_PROVIDER", _env("AUTOSKILL_EMBEDDING_PROVIDER", "")),
         help="hashing|none|openai|generic|dashscope|glm",
     )
-    parser.add_argument("--embeddings-model", default=_env("AUTOSKILL_EMBEDDINGS_MODEL", ""))
-    parser.add_argument("--embeddings-base-url", default=_env("AUTOSKILL_EMBEDDINGS_BASE_URL", ""))
-    parser.add_argument("--embeddings-api-key", default=_env("AUTOSKILL_EMBEDDINGS_API_KEY", ""))
-    parser.add_argument("--embeddings-auth-mode", default=_env("AUTOSKILL_EMBEDDINGS_AUTH_MODE", ""))
+    parser.add_argument("--embeddings-model", default=_env("AUTOSKILL_EMBEDDINGS_MODEL", ""), help="Optional embeddings model id.")
+    parser.add_argument("--embeddings-base-url", default=_env("AUTOSKILL_EMBEDDINGS_BASE_URL", ""), help="Optional embeddings base URL.")
+    parser.add_argument("--embeddings-api-key", default=_env("AUTOSKILL_EMBEDDINGS_API_KEY", ""), help="Optional embeddings API key.")
+    parser.add_argument("--embeddings-auth-mode", default=_env("AUTOSKILL_EMBEDDINGS_AUTH_MODE", ""), help="Optional embeddings auth mode.")
     parser.add_argument(
         "--embeddings-dims",
         type=int,
         default=int(_env("AUTOSKILL_EMBEDDINGS_DIMS", "0") or 0),
         help="Embedding dimension override (hashing uses dims; API providers use dimensions).",
     )
-    parser.add_argument("--store-path", default=_env("AUTOSKILL_STORE_PATH", ""))
+    parser.add_argument("--store-path", default=_env("AUTOSKILL_STORE_PATH", ""), help="Local SkillBank path used for compiled skill persistence.")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Builds the staged document pipeline CLI parser."""
+
+    parser_kwargs = {
+        "formatter_class": argparse.RawDescriptionHelpFormatter,
+    }
+    parser = argparse.ArgumentParser(
+        description="Run the staged offline AutoSkill document pipeline.",
+        epilog=_DOCUMENT_CLI_EXAMPLES,
+        **parser_kwargs,
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    build_parser = subparsers.add_parser(
+        "build",
+        help="Run the full document pipeline and persist registry/store updates.",
+        description="Run all document pipeline stages and persist the resulting registry and skill updates.",
+        epilog=_DOCUMENT_CLI_EXAMPLES,
+        **parser_kwargs,
+    )
+    _add_common_args(build_parser)
+    build_parser.add_argument(
+        "--target-state",
+        default=VersionState.ACTIVE.value,
+        choices=[state.value for state in VersionState],
+        help="Lifecycle state assigned to compiled skills when persisted.",
+    )
+
+    ingest_parser = subparsers.add_parser(
+        "ingest",
+        help="Only ingest documents and run incremental checks.",
+        description="Read documents, build DocumentRecord objects, and skip unchanged content.",
+        **parser_kwargs,
+    )
+    _add_common_args(ingest_parser)
+
+    extract_parser = subparsers.add_parser(
+        "extract",
+        help="Run ingest + evidence extraction without capability induction.",
+        description="Read documents and extract EvidenceUnit records without inducing capabilities.",
+        **parser_kwargs,
+    )
+    _add_common_args(extract_parser)
+
+    induce_parser = subparsers.add_parser(
+        "induce",
+        help="Run ingest + extract + capability induction without compilation.",
+        description="Read documents, extract evidence, and induce CapabilitySpec objects.",
+        **parser_kwargs,
+    )
+    _add_common_args(induce_parser)
+
+    compile_parser = subparsers.add_parser(
+        "compile",
+        help="Compile documents into SkillSpec output without registry/store persistence.",
+        description="Run ingest, evidence extraction, capability induction, and SkillSpec compilation.",
+        epilog=_DOCUMENT_CLI_EXAMPLES,
+        **parser_kwargs,
+    )
+    _add_common_args(compile_parser)
+    compile_parser.add_argument(
+        "--target-state",
+        default=VersionState.DRAFT.value,
+        choices=[state.value for state in VersionState],
+        help="Lifecycle state stamped on compiled SkillSpec output.",
+    )
     return parser
 
 
-def main() -> None:
-    """Run main."""
-    args = build_parser().parse_args()
+def _print_errors(errors: List[Dict[str, Any]]) -> None:
+    """Prints a compact error list for CLI commands."""
+
+    if not errors:
+        return
+    print("Errors:")
+    for item in errors[:20]:
+        print(f"- {item}")
+
+
+def _print_json(payload: Dict[str, Any]) -> None:
+    """Prints one JSON payload with stable formatting."""
+
+    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=False))
+
+
+def _run_build(args: argparse.Namespace) -> None:
+    """Runs the full build command."""
+
     sdk = _build_sdk_from_args(args)
     result = extract_from_doc(
         sdk=sdk,
-        user_id=str(args.user_id).strip() or "u1",
-        file_path=str(args.file or ""),
-        title=str(args.title or ""),
+        user_id=str(args.user_id or "").strip() or "u1",
+        file_path=str(args.file or "").strip(),
+        title=str(args.title or "").strip(),
+        domain=str(args.domain or "").strip(),
+        source_type=str(args.source_type or "").strip() or "document",
+        metadata=_base_metadata(args),
         hint=(str(args.hint).strip() or None),
         continue_on_error=True,
         max_chars_per_chunk=int(args.max_chars_per_chunk or 6000),
         overlap_chars=int(args.overlap_chars or 0),
-        metadata={"channel": "offline_extract_from_doc"},
+        registry_root=str(args.registry_root or "").strip(),
+        dry_run=bool(args.dry_run),
+        target_state=_coerce_state(str(args.target_state or ""), default=VersionState.ACTIVE),
+        logger=_build_logger(quiet=bool(args.quiet)),
     )
-    print("Offline document extraction completed.")
+    if bool(args.json):
+        _print_json(result)
+        return
+    print("Offline document build completed.")
     print(
-        f"units={result.get('total_units', 0)} "
-        f"chunks={result.get('total_chunks', 0)} "
-        f"processed={result.get('processed_chunks', 0)} "
-        f"failed={result.get('failed_chunks', 0)} "
+        f"documents={result.get('total_documents', 0)} "
+        f"skipped={result.get('skipped_documents', 0)} "
+        f"evidence={result.get('total_evidence_units', 0)} "
+        f"capabilities={result.get('total_capabilities', 0)} "
+        f"skills={result.get('total_skill_specs', 0)} "
+        f"lifecycles={result.get('lifecycle_events', 0)} "
+        f"changes={result.get('change_events', 0)} "
         f"upserted={result.get('upserted_count', 0)}"
     )
-    for i, s in enumerate(list(result.get("skills") or []), start=1):
-        print(f"{i}. {s.get('name', '')} ({s.get('version', '')})")
-    errors = list(result.get("errors") or [])
-    if errors:
-        print("Errors:")
-        for e in errors[:20]:
-            print(f"- unit#{e.get('unit_index')} chunk#{e.get('chunk_index')}: {e.get('error')}")
+    for idx, skill in enumerate(list(result.get("skills") or [])[:20], start=1):
+        name = str(skill.get("name") or "").strip()
+        version = str(skill.get("version") or "").strip()
+        print(f"{idx}. {name} ({version})")
+    _print_errors(list(result.get("errors") or []))
+
+
+def _run_ingest(args: argparse.Namespace) -> None:
+    """Runs only the ingest stage."""
+
+    pipeline = _build_pipeline_from_args(args)
+    result = pipeline.ingest_document(
+        file_path=str(args.file or "").strip(),
+        title=str(args.title or "").strip(),
+        source_type=str(args.source_type or "").strip() or "document",
+        domain=str(args.domain or "").strip(),
+        metadata=_base_metadata(args),
+        continue_on_error=True,
+        dry_run=bool(args.dry_run),
+    )
+    payload = {
+        "documents": [_plain_document(doc) for doc in list(result.documents or [])],
+        "skipped_documents": [_plain_document(doc) for doc in list(result.skipped_documents or [])],
+        "errors": list(result.errors or []),
+    }
+    if bool(args.json):
+        _print_json(payload)
+        return
+    print("Offline document ingest completed.")
+    print(
+        f"documents={len(result.documents)} "
+        f"skipped={len(result.skipped_documents)} "
+        f"errors={len(result.errors)}"
+    )
+    for doc in list(result.documents or [])[:20]:
+        print(f"- prepared: {doc.title} ({doc.doc_id})")
+    for doc in list(result.skipped_documents or [])[:20]:
+        print(f"- skipped: {doc.title} ({doc.doc_id})")
+    _print_errors(list(result.errors or []))
+
+
+def _run_extract(args: argparse.Namespace) -> None:
+    """Runs ingest -> extract without capability induction or persistence."""
+
+    pipeline = _build_pipeline_from_args(args)
+    ingest_result = pipeline.ingest_document(
+        file_path=str(args.file or "").strip(),
+        title=str(args.title or "").strip(),
+        source_type=str(args.source_type or "").strip() or "document",
+        domain=str(args.domain or "").strip(),
+        metadata=_base_metadata(args),
+        continue_on_error=True,
+        dry_run=bool(args.dry_run),
+    )
+    evidence_result = pipeline.extract_evidence(documents=ingest_result.documents)
+    payload = {
+        "documents": [_plain_document(doc) for doc in list(ingest_result.documents or [])],
+        "skipped_documents": [_plain_document(doc) for doc in list(ingest_result.skipped_documents or [])],
+        "evidence_units": [_plain_evidence(unit) for unit in list(evidence_result.evidence_units or [])],
+        "errors": list(ingest_result.errors) + list(evidence_result.errors),
+    }
+    if bool(args.json):
+        _print_json(payload)
+        return
+    print("Offline document extract completed.")
+    print(
+        f"documents={len(ingest_result.documents)} "
+        f"skipped={len(ingest_result.skipped_documents)} "
+        f"evidence={len(evidence_result.evidence_units)}"
+    )
+    for idx, unit in enumerate(list(evidence_result.evidence_units or [])[:20], start=1):
+        print(f"{idx}. {unit.claim_type}: {unit.normalized_claim[:120]}")
+    _print_errors(list(ingest_result.errors) + list(evidence_result.errors))
+
+
+def _run_induce(args: argparse.Namespace) -> None:
+    """Runs ingest -> extract -> induce without compilation or persistence."""
+
+    pipeline = _build_pipeline_from_args(args)
+    ingest_result = pipeline.ingest_document(
+        file_path=str(args.file or "").strip(),
+        title=str(args.title or "").strip(),
+        source_type=str(args.source_type or "").strip() or "document",
+        domain=str(args.domain or "").strip(),
+        metadata=_base_metadata(args),
+        continue_on_error=True,
+        dry_run=bool(args.dry_run),
+    )
+    evidence_result = pipeline.extract_evidence(documents=ingest_result.documents)
+    capability_result = pipeline.induce_capabilities(
+        documents=ingest_result.documents,
+        evidence_units=evidence_result.evidence_units,
+    )
+    payload = {
+        "documents": [_plain_document(doc) for doc in list(ingest_result.documents or [])],
+        "skipped_documents": [_plain_document(doc) for doc in list(ingest_result.skipped_documents or [])],
+        "evidence_units": [_plain_evidence(unit) for unit in list(evidence_result.evidence_units or [])],
+        "capabilities": [_plain_capability(spec) for spec in list(capability_result.capabilities or [])],
+        "errors": list(ingest_result.errors) + list(evidence_result.errors) + list(capability_result.errors),
+    }
+    if bool(args.json):
+        _print_json(payload)
+        return
+    print("Offline document induce completed.")
+    print(
+        f"documents={len(ingest_result.documents)} "
+        f"skipped={len(ingest_result.skipped_documents)} "
+        f"evidence={len(evidence_result.evidence_units)} "
+        f"capabilities={len(capability_result.capabilities)}"
+    )
+    for idx, spec in enumerate(list(capability_result.capabilities or [])[:20], start=1):
+        print(f"{idx}. {spec.title} ({spec.version})")
+    _print_errors(
+        list(ingest_result.errors)
+        + list(evidence_result.errors)
+        + list(capability_result.errors)
+    )
+
+
+def _run_compile(args: argparse.Namespace) -> None:
+    """Runs ingest -> extract -> induce -> compile without persistence."""
+
+    pipeline = _build_pipeline_from_args(args)
+    ingest_result = pipeline.ingest_document(
+        file_path=str(args.file or "").strip(),
+        title=str(args.title or "").strip(),
+        source_type=str(args.source_type or "").strip() or "document",
+        domain=str(args.domain or "").strip(),
+        metadata=_base_metadata(args),
+        continue_on_error=True,
+        dry_run=bool(args.dry_run),
+    )
+    evidence_result = pipeline.extract_evidence(documents=ingest_result.documents)
+    capability_result = pipeline.induce_capabilities(
+        documents=ingest_result.documents,
+        evidence_units=evidence_result.evidence_units,
+    )
+    skill_result = pipeline.compile_skills(
+        capabilities=capability_result.capabilities,
+        target_state=_coerce_state(str(args.target_state or ""), default=VersionState.DRAFT),
+    )
+    payload = {
+        "documents": [_plain_document(doc) for doc in list(ingest_result.documents or [])],
+        "skipped_documents": [_plain_document(doc) for doc in list(ingest_result.skipped_documents or [])],
+        "evidence_units": [_plain_evidence(unit) for unit in list(evidence_result.evidence_units or [])],
+        "capabilities": [_plain_capability(spec) for spec in list(capability_result.capabilities or [])],
+        "skills": [_plain_skill_spec(spec) for spec in list(skill_result.skill_specs or [])],
+        "errors": list(ingest_result.errors)
+        + list(evidence_result.errors)
+        + list(capability_result.errors)
+        + list(skill_result.errors),
+    }
+    if bool(args.json):
+        _print_json(payload)
+        return
+    print("Offline document compile completed.")
+    print(
+        f"documents={len(ingest_result.documents)} "
+        f"skipped={len(ingest_result.skipped_documents)} "
+        f"evidence={len(evidence_result.evidence_units)} "
+        f"capabilities={len(capability_result.capabilities)} "
+        f"skills={len(skill_result.skill_specs)}"
+    )
+    for idx, spec in enumerate(list(skill_result.skill_specs or [])[:20], start=1):
+        print(f"{idx}. {spec.name} ({spec.version}, {spec.status.value})")
+    _print_errors(
+        list(ingest_result.errors)
+        + list(evidence_result.errors)
+        + list(capability_result.errors)
+        + list(skill_result.errors)
+    )
+
+
+def main(argv: Optional[Sequence[str]] = None) -> None:
+    """CLI entrypoint for staged document pipeline commands."""
+
+    raw_args = list(argv if argv is not None else sys.argv[1:])
+    if not raw_args:
+        build_parser().print_help()
+        return
+    if raw_args[0].startswith("-") and raw_args[0] not in {"-h", "--help"}:
+        raw_args = ["build"] + raw_args
+
+    args = build_parser().parse_args(raw_args)
+    command = str(args.command or "build").strip() or "build"
+    if command == "build":
+        _run_build(args)
+        return
+    if command == "ingest":
+        _run_ingest(args)
+        return
+    if command == "extract":
+        _run_extract(args)
+        return
+    if command == "induce":
+        _run_induce(args)
+        return
+    if command == "compile":
+        _run_compile(args)
+        return
+    raise ValueError(f"unsupported command: {command}")
 
 
 if __name__ == "__main__":

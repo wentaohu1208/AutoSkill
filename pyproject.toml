@@ -16,6 +16,9 @@ classifiers = [
 ]
 dependencies = []
 
+[project.scripts]
+autoskill = "autoskill.cli:main"
+
 [tool.setuptools]
 package-dir = {"" = "."}
 
