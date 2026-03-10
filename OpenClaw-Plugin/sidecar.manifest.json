@@ -14,8 +14,10 @@
     "protocol": "autoskill-service",
     "endpoints": [
       "/models",
+      "/chat/completions",
       "/autoskill/capabilities",
       "/autoskill/openclaw/turn",
+      "/autoskill/openclaw/skills/sync",
       "/autoskill/openclaw/hooks/before_agent_start",
       "/autoskill/openclaw/hooks/agent_end",
       "/autoskill/retrieval/preview",

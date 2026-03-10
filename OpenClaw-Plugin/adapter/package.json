@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "OpenClaw lifecycle adapter for AutoSkill sidecar.",
+  "scripts": {
+    "test": "node --test ./index.test.mjs"
+  },
   "openclaw": {
     "extensions": [
       "./index.js"
@@ -20,4 +23,3 @@
     ]
   }
 }
-

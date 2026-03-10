@@ -97,9 +97,16 @@ def _upsert_openclaw_plugin_config(
         cfg = {}
     cfg.setdefault("baseUrl", f"http://127.0.0.1:{int(proxy_port)}/v1")
     cfg.setdefault("skillScope", "all")
-    cfg.setdefault("topK", 1)
+    cfg.setdefault("topK", 3)
     cfg.setdefault("minScore", 0.4)
-    cfg.setdefault("recallEnabled", True)
+    skill_retrieval = cfg.get("skillRetrieval")
+    if not isinstance(skill_retrieval, dict):
+        skill_retrieval = {}
+    skill_retrieval.setdefault("topK", 3)
+    skill_retrieval.setdefault("maxChars", 1500)
+    skill_retrieval.setdefault("minScore", 0.4)
+    skill_retrieval.setdefault("injectionMode", "appendSystemContext")
+    cfg["skillRetrieval"] = skill_retrieval
     cfg.setdefault("extractOnAgentEnd", True)
     cfg.setdefault("successOnly", True)
     entry["config"] = cfg
@@ -114,6 +121,8 @@ def _env_template(args: argparse.Namespace, *, repo_dir: Path, workspace_dir: Pa
     store_dir = Path(str(args.store_dir or "")).expanduser()
     if not str(store_dir).strip():
         store_dir = workspace_dir / "autoskill" / "SkillBank"
+    openclaw_skills_dir = (workspace_dir / "workspace" / "skills").resolve()
+    conversation_archive_dir = (workspace_dir / "autoskill" / "conversations").resolve()
     return (
         "# AutoSkill OpenClaw Plugin env\n"
         f"AUTOSKILL_REPO_DIR={repo_dir}\n"
@@ -125,11 +134,28 @@ def _env_template(args: argparse.Namespace, *, repo_dir: Path, workspace_dir: Pa
         "AUTOSKILL_SKILL_SCOPE=all\n"
         "AUTOSKILL_REWRITE_MODE=always\n"
         "AUTOSKILL_MIN_SCORE=0.4\n"
-        "AUTOSKILL_TOP_K=1\n"
+        "AUTOSKILL_TOP_K=3\n"
+        "AUTOSKILL_SKILL_RETRIEVAL_ENABLED=\n"
+        "AUTOSKILL_SKILL_RETRIEVAL_TOP_K=3\n"
+        "AUTOSKILL_SKILL_RETRIEVAL_MAX_CHARS=1500\n"
+        "AUTOSKILL_SKILL_RETRIEVAL_MIN_SCORE=0.4\n"
+        "AUTOSKILL_SKILL_RETRIEVAL_INJECTION_MODE=appendSystemContext\n"
         "AUTOSKILL_HISTORY_TURNS=100\n"
         "AUTOSKILL_INGEST_WINDOW=6\n"
+        "AUTOSKILL_OPENCLAW_INGEST_WINDOW=6\n"
         "AUTOSKILL_EXTRACT_ENABLED=1\n"
         "AUTOSKILL_MAX_BG_EXTRACT_JOBS=2\n"
+        "AUTOSKILL_OPENCLAW_MAIN_TURN_EXTRACT=1\n"
+        "AUTOSKILL_OPENCLAW_AGENT_END_EXTRACT=\n"
+        "AUTOSKILL_OPENCLAW_PROXY_TARGET_BASE_URL=\n"
+        "AUTOSKILL_OPENCLAW_PROXY_TARGET_API_KEY=\n"
+        "AUTOSKILL_OPENCLAW_PROXY_CONNECT_TIMEOUT_S=20\n"
+        "AUTOSKILL_OPENCLAW_PROXY_READ_TIMEOUT_S=600\n"
+        "AUTOSKILL_OPENCLAW_CONVERSATION_ARCHIVE_ENABLED=1\n"
+        f"AUTOSKILL_OPENCLAW_CONVERSATION_ARCHIVE_DIR={conversation_archive_dir}\n"
+        "AUTOSKILL_OPENCLAW_SKILL_INSTALL_MODE=openclaw_mirror\n"
+        f"AUTOSKILL_OPENCLAW_SKILLS_DIR={openclaw_skills_dir}\n"
+        "AUTOSKILL_OPENCLAW_INSTALL_USER_ID=\n"
         f"AUTOSKILL_LLM_PROVIDER={args.llm_provider}\n"
         f"AUTOSKILL_LLM_MODEL={args.llm_model}\n"
         f"AUTOSKILL_EMBEDDINGS_PROVIDER={args.embeddings_provider}\n"
@@ -284,6 +310,7 @@ def main() -> None:
 
     install_dir.mkdir(parents=True, exist_ok=True)
     (workspace_dir / "autoskill" / "SkillBank").mkdir(parents=True, exist_ok=True)
+    (workspace_dir / "workspace" / "skills").mkdir(parents=True, exist_ok=True)
 
     env_path = install_dir / ".env"
     env_txt = _env_template(args, repo_dir=repo_dir, workspace_dir=workspace_dir)
@@ -319,6 +346,7 @@ def main() -> None:
     print("  hook API: POST /v1/autoskill/openclaw/hooks/before_agent_start")
     print("  hook API: POST /v1/autoskill/openclaw/hooks/agent_end")
     print("  compat API: POST /v1/autoskill/openclaw/turn")
+    print("  mirror API: POST /v1/autoskill/openclaw/skills/sync")
     print("  api_key : <AUTOSKILL_PROXY_API_KEY or empty>")
     print("")
     print("Adapter plugin id:")

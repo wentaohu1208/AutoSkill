@@ -2,8 +2,8 @@
 """
 AutoSkill OpenClaw plugin runtime entrypoint.
 
-This service is NOT a chat model proxy. It exposes autoskill retrieval/evolution APIs
-for OpenClaw to call with its own conversation data.
+This service exposes AutoSkill retrieval/evolution APIs and can optionally act as an
+OpenAI-compatible main-turn chat proxy for OpenClaw.
 """
 
 from __future__ import annotations
@@ -34,6 +34,41 @@ from examples.interactive_chat import (
     build_llm_config,
 )
 from service_runtime import OpenClawSkillRuntime
+from openclaw_conversation_archive import OpenClawConversationArchiveConfig
+from openclaw_main_turn_proxy import OpenClawMainTurnProxyConfig
+from openclaw_skill_mirror import OpenClawSkillInstallConfig
+
+
+def _cli_flag_present(flag: str) -> bool:
+    needle = str(flag or "").strip()
+    if not needle:
+        return False
+    for raw in sys.argv[1:]:
+        arg = str(raw or "").strip()
+        if arg == needle or arg.startswith(needle + "="):
+            return True
+    return False
+
+
+def _is_truthy(raw: Any, *, default: bool) -> bool:
+    value = str(raw or "").strip().lower()
+    if not value:
+        return bool(default)
+    return value not in {"0", "false", "no", "off"}
+
+
+def _resolve_agent_end_extract_enabled(
+    *,
+    main_turn_enabled: bool,
+    target_configured: bool,
+    raw_value: Any,
+    explicit: bool,
+) -> bool:
+    if explicit:
+        return _is_truthy(raw_value, default=True)
+    if main_turn_enabled and target_configured:
+        return False
+    return True
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,7 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-score", type=float, default=float(_env("AUTOSKILL_MIN_SCORE", "0.4")))
     parser.add_argument("--top-k", type=int, default=int(_env("AUTOSKILL_TOP_K", "1")))
     parser.add_argument("--history-turns", type=int, default=int(_env("AUTOSKILL_HISTORY_TURNS", "100")))
-    parser.add_argument("--ingest-window", type=int, default=int(_env("AUTOSKILL_INGEST_WINDOW", "6")))
+    parser.add_argument(
+        "--ingest-window",
+        type=int,
+        default=int(_env("AUTOSKILL_OPENCLAW_INGEST_WINDOW", _env("AUTOSKILL_INGEST_WINDOW", "6"))),
+    )
     parser.add_argument("--extract-enabled", default=_env("AUTOSKILL_EXTRACT_ENABLED", "1"), help="1|0")
     parser.add_argument(
         "--max-bg-extract-jobs",
@@ -101,6 +140,61 @@ def build_parser() -> argparse.ArgumentParser:
         "--served-models-json",
         default=_env("AUTOSKILL_PROXY_MODELS", ""),
         help="Optional JSON list for /v1/models.",
+    )
+    parser.add_argument(
+        "--openclaw-main-turn-extract",
+        default=_env("AUTOSKILL_OPENCLAW_MAIN_TURN_EXTRACT", "1"),
+        help="Enable main-turn sampling on proxied /v1/chat/completions: 1|0",
+    )
+    parser.add_argument(
+        "--openclaw-agent-end-extract",
+        default=_env("AUTOSKILL_OPENCLAW_AGENT_END_EXTRACT", ""),
+        help="Keep legacy agent_end extraction hook enabled: 1|0",
+    )
+    parser.add_argument(
+        "--openclaw-proxy-target-base-url",
+        default=_env("AUTOSKILL_OPENCLAW_PROXY_TARGET_BASE_URL", ""),
+        help="Real OpenAI-compatible backend base_url; can end with or without /v1.",
+    )
+    parser.add_argument(
+        "--openclaw-proxy-target-api-key",
+        default=_env("AUTOSKILL_OPENCLAW_PROXY_TARGET_API_KEY", ""),
+        help="Optional API key injected into proxied chat requests.",
+    )
+    parser.add_argument(
+        "--openclaw-proxy-connect-timeout-s",
+        type=float,
+        default=float(_env("AUTOSKILL_OPENCLAW_PROXY_CONNECT_TIMEOUT_S", "20")),
+    )
+    parser.add_argument(
+        "--openclaw-proxy-read-timeout-s",
+        type=float,
+        default=float(_env("AUTOSKILL_OPENCLAW_PROXY_READ_TIMEOUT_S", "600")),
+    )
+    parser.add_argument(
+        "--openclaw-skill-install-mode",
+        default=_env("AUTOSKILL_OPENCLAW_SKILL_INSTALL_MODE", "openclaw_mirror"),
+        help="store_only|openclaw_mirror",
+    )
+    parser.add_argument(
+        "--openclaw-skills-dir",
+        default=_env("AUTOSKILL_OPENCLAW_SKILLS_DIR", ""),
+        help="Target OpenClaw skills directory. Empty uses the detected default.",
+    )
+    parser.add_argument(
+        "--openclaw-install-user-id",
+        default=_env("AUTOSKILL_OPENCLAW_INSTALL_USER_ID", ""),
+        help="Optional user id filter for mirroring skills into OpenClaw.",
+    )
+    parser.add_argument(
+        "--openclaw-conversation-archive-enabled",
+        default=_env("AUTOSKILL_OPENCLAW_CONVERSATION_ARCHIVE_ENABLED", "1"),
+        help="Persist received OpenClaw conversations locally for replay/offline use: 1|0",
+    )
+    parser.add_argument(
+        "--openclaw-conversation-archive-dir",
+        default=_env("AUTOSKILL_OPENCLAW_CONVERSATION_ARCHIVE_DIR", ""),
+        help="Local directory for archived OpenClaw conversations (JSONL).",
     )
     return parser
 
@@ -174,20 +268,86 @@ def main() -> None:
         served_models=served_models,
     ).normalize()
 
+    main_turn_enabled = _is_truthy(args.openclaw_main_turn_extract, default=False)
+    target_base_url = str(args.openclaw_proxy_target_base_url or "").strip()
+    agent_end_raw = str(args.openclaw_agent_end_extract or "").strip()
+    agent_end_explicit = bool(agent_end_raw) or bool(_env("AUTOSKILL_OPENCLAW_AGENT_END_EXTRACT", "").strip()) or _cli_flag_present(
+        "--openclaw-agent-end-extract"
+    )
+    agent_end_extract_enabled = _resolve_agent_end_extract_enabled(
+        main_turn_enabled=bool(main_turn_enabled),
+        target_configured=bool(target_base_url),
+        raw_value=agent_end_raw,
+        explicit=bool(agent_end_explicit),
+    )
+    main_turn_proxy_cfg = OpenClawMainTurnProxyConfig(
+        enabled=bool(main_turn_enabled),
+        target_base_url=target_base_url,
+        target_api_key=(str(args.openclaw_proxy_target_api_key or "").strip() or None),
+        ingest_window=int(args.ingest_window),
+        connect_timeout_s=float(args.openclaw_proxy_connect_timeout_s),
+        read_timeout_s=float(args.openclaw_proxy_read_timeout_s),
+        agent_end_extract_enabled=bool(agent_end_extract_enabled),
+    ).normalize()
+    skill_install_cfg = OpenClawSkillInstallConfig(
+        mode=str(args.openclaw_skill_install_mode or "openclaw_mirror"),
+        skills_dir=str(args.openclaw_skills_dir or ""),
+        install_user_id=str(args.openclaw_install_user_id or ""),
+    ).normalize()
+    conversation_archive_cfg = OpenClawConversationArchiveConfig(
+        enabled=_is_truthy(args.openclaw_conversation_archive_enabled, default=True),
+        archive_dir=str(args.openclaw_conversation_archive_dir or ""),
+    ).normalize()
+
     runtime = OpenClawSkillRuntime(
         sdk=sdk,
         llm_config=llm_cfg,
         embeddings_config=emb_cfg,
         config=cfg,
+        main_turn_proxy_config=main_turn_proxy_cfg,
+        skill_install_config=skill_install_cfg,
+        conversation_archive_config=conversation_archive_cfg,
     )
     server = runtime.create_server(host=str(args.host), port=int(args.port))
     host, port = server.server_address[:2]
     print(f"AutoSkill OpenClaw Skill Service: http://{host}:{port}")
+    endpoints = [
+        "/v1/models",
+        "/v1/autoskill/openclaw/hooks/before_agent_start",
+        "/v1/autoskill/openclaw/hooks/agent_end",
+        "/v1/autoskill/openclaw/turn",
+        "/v1/autoskill/openclaw/skills/sync",
+        "/v1/autoskill/retrieval/preview",
+        "/v1/autoskill/conversations/import",
+        "/v1/autoskill/extractions",
+        "/v1/autoskill/capabilities",
+        "/health",
+    ]
+    if main_turn_proxy_cfg.chat_endpoint_enabled:
+        endpoints.insert(1, "/v1/chat/completions")
+    print("Endpoints: " + ", ".join(endpoints))
+    if main_turn_proxy_cfg.enabled and not main_turn_proxy_cfg.chat_endpoint_enabled:
+        print(
+            "[openclaw-plugin] warning: AUTOSKILL_OPENCLAW_MAIN_TURN_EXTRACT=1 but "
+            "AUTOSKILL_OPENCLAW_PROXY_TARGET_BASE_URL is empty; /v1/chat/completions will return 503."
+        )
     print(
-        "Endpoints: /v1/models, /v1/autoskill/openclaw/hooks/before_agent_start, "
-        "/v1/autoskill/openclaw/hooks/agent_end, /v1/autoskill/openclaw/turn, /v1/autoskill/retrieval/preview, "
-        "/v1/autoskill/conversations/import, /v1/autoskill/extractions, /v1/autoskill/capabilities, /health"
+        "[openclaw-plugin] extraction routing: "
+        f"main_turn_enabled={int(bool(main_turn_proxy_cfg.enabled))} "
+        f"chat_proxy={int(bool(main_turn_proxy_cfg.chat_endpoint_enabled))} "
+        f"agent_end_extract={int(bool(main_turn_proxy_cfg.agent_end_extract_enabled))}"
     )
+    if conversation_archive_cfg.enabled:
+        print(
+            "[openclaw-plugin] conversation archive enabled: "
+            f"dir={conversation_archive_cfg.archive_dir}"
+        )
+    if skill_install_cfg.enabled:
+        print(
+            "[openclaw-plugin] skill install mirror enabled: "
+            f"dir={skill_install_cfg.skills_dir} "
+            f"user={skill_install_cfg.install_user_id or '<dynamic>'}"
+        )
     server.serve_forever()
 
 

@@ -1,7 +1,7 @@
 {
   "id": "autoskill-openclaw-adapter",
   "name": "AutoSkill OpenClaw Adapter",
-  "description": "Inject retrieved skills before each run and schedule skill evolution after successful runs.",
+  "description": "Append retrieved skill hints during before_prompt_build and schedule skill evolution after successful runs.",
   "version": "0.1.0",
   "kind": "lifecycle",
   "main": "./index.js",
@@ -32,11 +32,48 @@
         ],
         "default": "all"
       },
+      "skillRetrieval": {
+        "type": "object",
+        "description": "before_prompt_build retrieval and prompt augmentation settings.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "topK": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 3
+          },
+          "maxChars": {
+            "type": "integer",
+            "minimum": 200,
+            "maximum": 8000,
+            "default": 1500
+          },
+          "minScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.4
+          },
+          "injectionMode": {
+            "type": "string",
+            "enum": [
+              "appendSystemContext",
+              "prependSystemContext"
+            ],
+            "default": "appendSystemContext"
+          }
+        },
+        "additionalProperties": false
+      },
       "topK": {
         "type": "integer",
         "minimum": 1,
         "maximum": 20,
-        "default": 1
+        "default": 3
       },
       "minScore": {
         "type": "number",
@@ -46,7 +83,7 @@
       },
       "recallEnabled": {
         "type": "boolean",
-        "default": true
+        "default": false
       },
       "extractOnAgentEnd": {
         "type": "boolean",
@@ -78,10 +115,10 @@
       },
       "maxInjectedChars": {
         "type": "integer",
-        "minimum": 2000,
-        "maximum": 80000,
-        "default": 12000,
-        "description": "Max injected context size after adapter-side prompt assembly and truncation."
+        "minimum": 200,
+        "maximum": 8000,
+        "default": 1500,
+        "description": "Legacy compatibility alias for skillRetrieval.maxChars."
       }
     },
     "additionalProperties": false
