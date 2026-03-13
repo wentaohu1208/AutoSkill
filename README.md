@@ -14,17 +14,17 @@ English | [中文](README.zh-CN.md)
 </p>
 
 AutoSkill is a practical implementation of **Experience-driven Lifelong Learning (ELL)**.
-It learns from real interaction experience (dialogue + behavior/events), automatically creates reusable Skills,
+It learns from real interaction experience (dialogue + agents), automatically creates reusable Skills,
 and continuously evolves existing Skills through merge + version updates.
 
 ![AutoSkill Framework](imgs/Framework.png)
 
 ## News
 
-- **2026-03-13**: **AutoSkill4Doc 1.0** released (extract skills from document/research paper).
+- **2026-03-13**: **AutoSkill4Doc 1.0** released (Being expext by extracting skills from document/research paper).
 - **2026-03-01**: Added offline skill extraction from archived conversations (See Skills in SkillBank/CovSkill).
-- **2025-02-26**: **AutoSkill4OpenClaw 1.0** released (extracting skills from trajectory of OpenClaw).
-- **2025-02-04**: **AutoSkill 1.0** released.
+- **2025-02-26**: **AutoSkill4OpenClaw 1.0** released (Extracting skills from trajectory of OpenClaw).
+- **2025-02-04**: **AutoSkill 1.0** released (Extracting skills from dialogues in time).
 
 ## Table of Contents
 

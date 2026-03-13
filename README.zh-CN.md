@@ -14,16 +14,16 @@
 </p>
 
 AutoSkill 是 **Experience-driven Lifelong Learning（ELL，经验驱动终身学习）** 的工程化实践。
-它从真实交互经验（对话 + 行为/事件）中学习，自动生成可复用技能，并通过合并与版本演进持续优化已有技能。
+它从真实交互经验（对话 + agent）中学习，自动生成可复用技能，并通过合并与版本演进持续优化已有技能。
 
 ![AutoSkill Framework](imgs/Framework.png)
 
 ## News
 
-- **2026-03-13**：发布 **AutoSkill4Doc 1.0**（支持从文档/研究论文中抽取技能）。
+- **2026-03-13**：发布 **AutoSkill4Doc 1.0**（通过文档/研究论文抽取技能，持续完善中）。
 - **2026-03-01**：新增离线从历史对话抽取技能功能（示例可见 `SkillBank/CovSkill`）。
 - **2025-02-26**：发布 **AutoSkill4OpenClaw 1.0**（支持从 OpenClaw 轨迹中抽取技能）。
-- **2025-02-04**：发布 **AutoSkill 1.0**。
+- **2025-02-04**：发布 **AutoSkill 1.0**（支持随时间从对话中抽取技能）。
 
 ## 目录
 
