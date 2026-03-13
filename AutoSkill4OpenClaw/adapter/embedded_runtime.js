@@ -1739,5 +1739,22 @@ export function createEmbeddedProcessor(cfg, api, log, deps = {}) {
     };
   }
 
-  return { handle };
+  async function stageLive(payload, event, ctx) {
+    if (!payload || typeof payload !== "object") {
+      return { status: "skipped", reason: "empty_payload" };
+    }
+    if (isInternalEvent(event, ctx)) {
+      return { status: "skipped", reason: "internal_extraction_event" };
+    }
+    const staged = appendSession(payload);
+    return {
+      status: staged.ended.length ? "staged_with_closed_sessions" : "staged",
+      reason: staged.reason || "",
+      session_path: staged.path,
+      session_snapshot_path: staged.snapshot_path,
+      closed_sessions: staged.ended,
+    };
+  }
+
+  return { handle, stageLive };
 }

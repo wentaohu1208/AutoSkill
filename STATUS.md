@@ -840,3 +840,37 @@
 ### Risk Notes
 - Write frequency increases in embedded mode (one extra small JSON write per turn). This is intentional for real-time local visibility.
 - Fail-open behavior unchanged; extraction/memory/tool/provider paths are not coupled to snapshot write success logic.
+
+## 2026-03-13 - Round 17 (embedded live-stage from before_prompt_build)
+
+### Scope
+- Target area: environments where `agent_end` hook cadence is insufficient for real-time session visibility.
+- Objective: ensure embedded session files are staged during active chat turns, not only through `agent_end`.
+
+### Issue Found
+- Although embedded runtime now supports per-turn snapshot writes, writes were still triggered from `agent_end` path.
+- In some deployments, `agent_end` is sparse or payload shape differs, so users may not see files updating while chatting.
+
+### Fixes Applied
+- `AutoSkill4OpenClaw/adapter/embedded_runtime.js`
+  - exposed `stageLive(payload, event, ctx)`:
+    - stages JSONL + `.latest.json` snapshot only
+    - does not trigger extraction/maintenance jobs
+- `AutoSkill4OpenClaw/adapter/index.js`
+  - `before_prompt_build` now calls embedded `stageLive(...)` (best-effort, fail-open) when runtime is embedded.
+  - this path runs before retrieval checks, so it still stages local session snapshots when retrieval is disabled.
+  - added `buildEmbeddedLivePayload(...)` helper to construct lightweight staging payload from current hook context.
+  - wired `embeddedProcessor` into `before_prompt_build` handler registration.
+
+### Tests Added/Updated
+- `AutoSkill4OpenClaw/adapter/index.test.mjs`
+  - added `before_prompt_build stages embedded live session snapshot even when retrieval is disabled`.
+- Existing embedded runtime live snapshot tests remain green.
+
+### Validation
+- `cd AutoSkill4OpenClaw/adapter && npm test` (pass, 50 tests)
+- `python3 -m unittest discover -s AutoSkill4OpenClaw/tests -p 'test_*.py'` (pass, 49 tests)
+
+### Risk Notes
+- Added one lightweight local-write path on `before_prompt_build`; failures are swallowed and logged, never blocking prompt flow.
+- Extraction triggering behavior remains in `agent_end` path; `stageLive` intentionally avoids model calls.

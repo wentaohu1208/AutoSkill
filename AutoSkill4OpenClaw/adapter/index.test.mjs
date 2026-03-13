@@ -134,6 +134,55 @@ test("before_prompt_build skips external retrieval in embedded runtime default m
   );
 });
 
+test("before_prompt_build stages embedded live session snapshot even when retrieval is disabled", async () => {
+  await withEnv(
+    {
+      AUTOSKILL_OPENCLAW_RUNTIME_MODE: "embedded",
+      AUTOSKILL_OPENCLAW_SKILL_INSTALL_MODE: "store_only",
+      AUTOSKILL_SKILL_RETRIEVAL_ENABLED: "",
+    },
+    async () => {
+      const logger = makeLogger();
+      const cfg = normalizeConfig({
+        baseUrl: "http://127.0.0.1:9100/v1",
+        extractOnAgentEnd: true,
+      });
+      let requestCalled = false;
+      const liveCalls = [];
+      const handler = createBeforePromptBuildHandler(cfg, logger, {
+        embeddedProcessor: {
+          async stageLive(payload) {
+            liveCalls.push(payload);
+            return { status: "staged" };
+          },
+        },
+        async postJson() {
+          requestCalled = true;
+          return sampleResult();
+        },
+      });
+
+      const result = await handler(
+        {
+          sessionId: "sess-live-stage",
+          turnType: "main",
+          messages: [{ role: "user", content: "Need skill help." }],
+        },
+        {},
+      );
+
+      assert.equal(result, undefined);
+      assert.equal(requestCalled, false);
+      assert.equal(liveCalls.length, 1);
+      assert.equal(liveCalls[0].session_id, "sess-live-stage");
+      assert.equal(liveCalls[0].session_done, false);
+      assert(
+        logger.entries.some((entry) => entry.message.includes("retrieval disabled by embedded runtime mode")),
+      );
+    },
+  );
+});
+
 test("normalizeConfig disables retrieval by default when openclaw_mirror install mode is active", async () => {
   await withEnv(
     {

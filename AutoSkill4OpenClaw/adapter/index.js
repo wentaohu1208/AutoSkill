@@ -1297,8 +1297,25 @@ function buildInjectionResult(cfg, text) {
 function createBeforePromptBuildHandler(cfg, log, deps = {}) {
   const requestFn = typeof deps.postJson === "function" ? deps.postJson : postJson;
   const onRetrieval = typeof deps.onRetrieval === "function" ? deps.onRetrieval : null;
+  const embeddedProcessor = deps.embeddedProcessor;
+
+  const stageEmbeddedLiveSnapshot = async (event, ctx) => {
+    if (cfg.runtimeMode !== "embedded") return;
+    if (!embeddedProcessor || typeof embeddedProcessor.stageLive !== "function") return;
+    const livePayload = buildEmbeddedLivePayload(cfg, event, ctx);
+    if (!livePayload) return;
+    try {
+      await embeddedProcessor.stageLive(livePayload, event, ctx);
+    } catch (err) {
+      if (log?.warn) {
+        log.warn(`[${PLUGIN_ID}] embedded live session stage failed: ${String(err)}`);
+      }
+    }
+  };
+
   return async (event, ctx) => {
     if (log?.info) log.info(`[${PLUGIN_ID}] before_prompt_build invoked`);
+    await stageEmbeddedLiveSnapshot(event, ctx);
     if (!cfg.skillRetrieval.enabled) {
       if (log?.info) {
         const reason = asString(cfg.skillRetrieval.disableReason).trim();
@@ -1347,6 +1364,28 @@ function createBeforePromptBuildHandler(cfg, log, deps = {}) {
       }
       return;
     }
+  };
+}
+
+function buildEmbeddedLivePayload(cfg, event, ctx) {
+  const messages = pickMessages(event, ctx);
+  if (!messages.length) return null;
+  const sessionId = resolveSessionId(event, ctx, messages);
+  const turnType = resolveTurnType(event, ctx);
+  const channel = trimmed(
+    event?.channel || event?.channelId || event?.channel_id || ctx?.channel || ctx?.channelId || ctx?.channel_id,
+  );
+  const success = resolveSuccess(event).value;
+  return {
+    messages,
+    user: resolveUserId(cfg, event, ctx),
+    scope: cfg.skillScope,
+    min_score: cfg.minScore,
+    success,
+    session_done: false,
+    ...(sessionId ? { session_id: sessionId } : {}),
+    ...(turnType ? { turn_type: turnType } : {}),
+    ...(channel ? { channel } : {}),
   };
 }
 
@@ -1496,6 +1535,7 @@ export default {
       api,
       "before_prompt_build",
       createBeforePromptBuildHandler(cfg, log, {
+        embeddedProcessor,
         onRetrieval(sessionId, snapshot, userId) {
           retrievalCache.remember(sessionId, snapshot, userId);
         },
