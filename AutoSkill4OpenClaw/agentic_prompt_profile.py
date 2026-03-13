@@ -23,6 +23,7 @@ from autoskill.management.extraction import (
 )
 from autoskill.models import Skill
 from autoskill.utils import json_from_llm_text, redact_obj
+from openclaw_prompt_pack import render_openclaw_prompt
 
 
 class OpenClawTrajectorySkillExtractor(LLMSkillExtractor):
@@ -149,7 +150,7 @@ class OpenClawTrajectorySkillExtractor(LLMSkillExtractor):
 
 def _build_openclaw_agentic_extract_prompt(*, max_candidates: int) -> str:
     """Run build openclaw agentic extract prompt."""
-    return (
+    fallback = (
         "You are AutoSkill's OpenClaw Trajectory Skill Extractor.\n"
         "Task: derive reusable AGENTIC skills from interaction trajectories (messages/events/tool-use traces).\n"
         "If DATA.hint exists, treat it as explicit extraction intent.\n"
@@ -215,11 +216,16 @@ def _build_openclaw_agentic_extract_prompt(*, max_candidates: int) -> str:
         "\n"
         "JSON validity: escape newlines as \\n. No Markdown code block."
     )
+    return render_openclaw_prompt(
+        "sidecar.extract.system",
+        variables={"max_candidates": int(max_candidates)},
+        fallback=fallback,
+    )
 
 
 def _build_openclaw_agentic_repair_prompt(*, max_candidates: int) -> str:
     """Run build openclaw agentic repair prompt."""
-    return (
+    fallback = (
         "You are a JSON output fixer for OpenClaw trajectory skill extraction.\n"
         "Given DATA and DRAFT, output ONLY strict JSON: {\"skills\": [...]}.\n"
         f"Return at most {max_candidates} skills; if uncertain return {{\"skills\": []}}.\n"
@@ -243,6 +249,11 @@ def _build_openclaw_agentic_repair_prompt(*, max_candidates: int) -> str:
         "\n"
         "JSON validity: escape newlines as \\n."
     )
+    return render_openclaw_prompt(
+        "sidecar.extract.repair.system",
+        variables={"max_candidates": int(max_candidates)},
+        fallback=fallback,
+    )
 
 
 def _decide_candidate_action_with_llm_agentic(
@@ -254,7 +265,7 @@ def _decide_candidate_action_with_llm_agentic(
     dedupe_threshold: float,
 ) -> Tuple[str, Optional[str], Optional[str]]:
     """Run decide candidate action with llm agentic."""
-    system = (
+    fallback = (
         "You are AutoSkill's OpenClaw Agentic Skill Set Manager.\n"
         "Task: decide add|merge|discard for a newly extracted trajectory skill.\n"
         "Output ONLY strict JSON.\n"
@@ -294,6 +305,10 @@ def _decide_candidate_action_with_llm_agentic(
         "  \"reason\": string\n"
         "}"
     )
+    system = render_openclaw_prompt(
+        "sidecar.maintain.decide.system",
+        fallback=fallback,
+    )
     data = {
         "user_id": str(user_id),
         "dedupe_threshold": float(dedupe_threshold),
@@ -314,7 +329,7 @@ def _decide_candidate_action_with_llm_agentic(
 def _merge_with_llm_agentic(llm, existing: Skill, cand: SkillCandidate) -> Skill:
     """Run merge with llm agentic."""
     try:
-        system = (
+        fallback = (
             "You are AutoSkill's OpenClaw Agentic Skill Merger.\n"
             "Task: merge existing_skill and candidate_skill into ONE improved reusable skill.\n"
             "Output ONLY strict JSON with fields: name, description, prompt, triggers, tags.\n"
@@ -348,6 +363,10 @@ def _merge_with_llm_agentic(llm, existing: Skill, cand: SkillCandidate) -> Skill
             "- If resource references are needed, keep short pointers only (for example: Execute script: scripts/... or Read reference: references/...).\n"
             "\n"
             "JSON validity: escape newlines as \\n."
+        )
+        system = render_openclaw_prompt(
+            "sidecar.maintain.merge.system",
+            fallback=fallback,
         )
         user = (
             "existing_skill:\n"

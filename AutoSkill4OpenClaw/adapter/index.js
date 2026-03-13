@@ -31,6 +31,7 @@ const DEFAULTS = {
     sessionArchiveDir: "",
     skillBankDir: "",
     openclawSkillsDir: "",
+    promptPackPath: "",
     bm25TopK: 8,
     modelInvocation: {
       modes: [
@@ -695,6 +696,10 @@ function normalizeConfig(raw) {
     openclawSkillsDir: resolvePathInput(
       rawEmbeddedCfg.openclawSkillsDir || env.AUTOSKILL_OPENCLAW_SKILLS_DIR || env.OPENCLAW_SKILLS_DIR,
       defaultOpenclawSkillsDir,
+    ),
+    promptPackPath: resolvePathInput(
+      rawEmbeddedCfg.promptPackPath || env.AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH,
+      "",
     ),
     bm25TopK: Math.max(
       1,

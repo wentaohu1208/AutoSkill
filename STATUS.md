@@ -698,3 +698,105 @@
 - Inferred counters are additive observability only; pruning still reads strict explicit counters.
 - Main dialog/extraction path remains fail-open:
   - usage tracking errors are swallowed and only logged.
+
+## 2026-03-13 - Round 14 (shared prompt pack for sidecar + embedded)
+
+### Scope
+- Target area: prompt consistency between sidecar prompt profile and embedded runtime.
+- Objective: eliminate prompt drift by introducing one shared prompt source used by both paths.
+
+### Issues Found
+- Prompt definitions were split across:
+  - `AutoSkill4OpenClaw/agentic_prompt_profile.py` (sidecar)
+  - `AutoSkill4OpenClaw/adapter/embedded_runtime.js` (embedded)
+- This created high drift risk when updating extraction / maintenance / merge policies.
+
+### Fixes Applied
+- Added shared prompt pack:
+  - `AutoSkill4OpenClaw/adapter/openclaw_prompt_pack.txt`
+  - includes reusable shared blocks plus sidecar/embedded templates:
+    - `sidecar.extract.system`
+    - `sidecar.extract.repair.system`
+    - `sidecar.maintain.decide.system`
+    - `sidecar.maintain.merge.system`
+    - `embedded.extract.system`
+    - `embedded.maintain.decide.system`
+    - `embedded.maintain.merge.system`
+- Added Python loader/renderer:
+  - `AutoSkill4OpenClaw/openclaw_prompt_pack.py`
+  - supports `{{block.*}}` and `{{var.*}}` template rendering
+  - supports override path via `AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH`
+  - fail-open fallback to built-in prompts when file is missing/invalid
+- Wired sidecar prompt profile to shared templates:
+  - `AutoSkill4OpenClaw/agentic_prompt_profile.py`
+  - extraction, repair, maintenance decision, and merge prompts now render from shared pack first, then fallback to legacy inline prompt text.
+- Wired embedded runtime to shared templates:
+  - `AutoSkill4OpenClaw/adapter/embedded_runtime.js`
+  - extraction/maintenance/merge system prompts now render from shared pack first, then fallback to legacy inline prompt text.
+  - added embedded runtime logs for prompt-pack loaded/fallback path.
+
+### Tests Added/Updated
+- New Python tests:
+  - `AutoSkill4OpenClaw/tests/test_openclaw_prompt_pack.py`
+    - default pack loads with version
+    - sidecar + embedded extract prompts both include shared block marker
+    - template fallback behavior
+    - custom pack block/var rendering
+- Updated JS tests:
+  - `AutoSkill4OpenClaw/adapter/embedded_runtime.test.mjs`
+    - verifies embedded runtime reads custom prompt pack templates and renders block/variable substitutions.
+
+### Validation
+- `python3 -m unittest AutoSkill4OpenClaw/tests/test_openclaw_prompt_pack.py` (pass)
+- `python3 AutoSkill4OpenClaw/tests/test_agentic_prompt_profile.py` (pass)
+- `python3 -m unittest discover -s AutoSkill4OpenClaw/tests -p 'test_*.py'` (pass, 48 tests)
+- `cd AutoSkill4OpenClaw/adapter && npm test` (pass, 46 tests)
+
+### Documentation
+- Updated:
+  - `AutoSkill4OpenClaw/README.md`
+  - `AutoSkill4OpenClaw/README.zh-CN.md`
+- Added section explaining shared prompt pack path, override env, and fail-open fallback.
+
+### Risk / Safety Notes
+- Runtime behavior remains fail-open:
+  - if shared prompt pack is unavailable or malformed, both runtimes automatically fallback to built-in prompts.
+- No changes to OpenClaw memory slots / contextEngine / compaction / tools / provider routing.
+
+## 2026-03-13 - Round 15 (prompt-pack config ergonomics + integration coverage)
+
+### Scope
+- Target area: shared prompt-pack operability and regression coverage.
+- Objective: ensure prompt-pack path override works from standard plugin config (not env-only), and verify sidecar prompt-profile actually consumes the shared pack.
+
+### Issues Found
+- Embedded prompt-pack override was effectively env-driven:
+  - `embedded_runtime.js` accepted `cfg.embedded.promptPackPath`, but `normalizeConfig` did not preserve this field.
+- Sidecar tests validated prompt text content but did not explicitly prove that `AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH` can override prompt source end-to-end in prompt-profile builders.
+
+### Fixes Applied
+- `AutoSkill4OpenClaw/adapter/index.js`
+  - Added `embedded.promptPackPath` to normalized config output.
+  - Added default field in `DEFAULTS.embedded`.
+  - Supports both plugin config and env override:
+    - config: `plugins.entries.autoskill-openclaw-adapter.config.embedded.promptPackPath`
+    - env: `AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH`
+- `AutoSkill4OpenClaw/install.py`
+  - Added `AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH=` to generated `.env` template.
+- `AutoSkill4OpenClaw/tests/test_agentic_prompt_profile.py`
+  - Added integration-style test proving sidecar extract prompt can be overridden via shared prompt pack env path.
+- `AutoSkill4OpenClaw/adapter/index.test.mjs`
+  - Added config normalization tests for prompt-pack override via config/env.
+- Docs updated:
+  - `AutoSkill4OpenClaw/README.md`
+  - `AutoSkill4OpenClaw/README.zh-CN.md`
+  - now include both env and plugin-config override examples.
+
+### Validation
+- `python3 AutoSkill4OpenClaw/tests/test_agentic_prompt_profile.py` (pass, 5 tests)
+- `python3 -m unittest discover -s AutoSkill4OpenClaw/tests -p 'test_*.py'` (pass, 49 tests)
+- `cd AutoSkill4OpenClaw/adapter && npm test` (pass, 48 tests)
+
+### Residual Suggestions
+- Parser/runtime consistency still uses two lightweight implementations (Python + JS) over one shared pack format.
+- Current risk is low and covered by tests, but future work can factor a tiny formal schema test corpus (golden render cases) consumed by both test suites to further reduce parser drift risk.

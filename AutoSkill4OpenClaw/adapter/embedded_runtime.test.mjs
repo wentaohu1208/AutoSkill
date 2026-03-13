@@ -181,6 +181,92 @@ function makeInvokeModelWithMultilineMetadata() {
   };
 }
 
+test("embedded runtime reads shared prompt pack templates for extraction and maintenance", async () => {
+  const paths = makeSandbox();
+  const logger = makeLogger();
+  const promptPackPath = path.join(paths.root, "openclaw_prompt_pack.txt");
+  fs.writeFileSync(
+    promptPackPath,
+    [
+      "@@version test-pack",
+      "",
+      "@@block shared.marker",
+      "SHARED-MARKER-LINE",
+      "@@end",
+      "",
+      "@@template embedded.extract.system",
+      "EXTRACT-CUSTOM {{block.shared.marker}} max={{var.max_candidates}}",
+      "@@end",
+      "",
+      "@@template embedded.maintain.decide.system",
+      "DECIDE-CUSTOM {{block.shared.marker}}",
+      "@@end",
+      "",
+      "@@template embedded.maintain.merge.system",
+      "MERGE-CUSTOM {{block.shared.marker}}",
+      "@@end",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const seenCalls = [];
+  const processor = createEmbeddedProcessor(
+    makeConfig(paths, { embedded: { promptPackPath } }),
+    {},
+    logger,
+    {
+      async invokeModel({ system, metadata }) {
+        seenCalls.push({ channel: metadata?.channel || "", system: String(system || "") });
+        if (metadata?.channel === "autoskill_embedded_extract") {
+          return JSON.stringify({
+            skills: [
+              {
+                name: "Prompt Pack Skill",
+                description: "Skill extracted with custom prompt pack.",
+                prompt: "# Goal\nDo it.\n",
+                triggers: ["prompt pack extract"],
+                tags: ["prompt-pack"],
+              },
+            ],
+          });
+        }
+        if (metadata?.channel === "autoskill_embedded_maintain") {
+          return JSON.stringify({ action: "add" });
+        }
+        return JSON.stringify({});
+      },
+    },
+  );
+
+  const result = await processor.handle(
+    {
+      user: "user1",
+      session_id: "sess-prompt-pack",
+      turn_type: "main",
+      session_done: true,
+      success: true,
+      messages: [
+        { role: "user", content: "Need reusable process." },
+        { role: "assistant", content: "Sure." },
+      ],
+    },
+    {},
+    {},
+  );
+
+  assert.equal(result.status, "scheduled");
+  const extract = seenCalls.find((x) => x.channel === "autoskill_embedded_extract");
+  const decide = seenCalls.find((x) => x.channel === "autoskill_embedded_maintain");
+  assert.ok(extract);
+  assert.ok(decide);
+  assert.match(extract.system, /EXTRACT-CUSTOM/);
+  assert.match(extract.system, /SHARED-MARKER-LINE/);
+  assert.match(extract.system, /max=1/);
+  assert.match(decide.system, /DECIDE-CUSTOM/);
+  assert.match(decide.system, /SHARED-MARKER-LINE/);
+});
+
 test("embedded runtime extracts only after session is closed and mirrors changed skills", async () => {
   const paths = makeSandbox();
   const logger = makeLogger();

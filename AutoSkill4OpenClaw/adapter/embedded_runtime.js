@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 function asString(v) {
   if (v == null) return "";
@@ -51,6 +52,109 @@ function parseJsonLoose(text) {
     } catch (_) {
       return null;
     }
+  }
+}
+
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_PROMPT_PACK_PATH = path.join(MODULE_DIR, "openclaw_prompt_pack.txt");
+const PROMPT_TOKEN_RE = /\{\{([a-zA-Z0-9_.:-]+)\}\}/g;
+
+function parsePromptPack(raw) {
+  const blocks = {};
+  const templates = {};
+  let version = "";
+  let mode = "";
+  let name = "";
+  let buf = [];
+  for (const line of String(raw || "").split(/\r?\n/)) {
+    const stripped = line.trim();
+    if (!mode && stripped.startsWith("@@version ")) {
+      version = stripped.slice("@@version ".length).trim();
+      continue;
+    }
+    if (!mode && stripped.startsWith("@@block ")) {
+      mode = "block";
+      name = stripped.slice("@@block ".length).trim();
+      buf = [];
+      continue;
+    }
+    if (!mode && stripped.startsWith("@@template ")) {
+      mode = "template";
+      name = stripped.slice("@@template ".length).trim();
+      buf = [];
+      continue;
+    }
+    if (mode && stripped === "@@end") {
+      const text = buf.join("\n").replace(/^\n+|\n+$/g, "");
+      if (mode === "block" && name) blocks[name] = text;
+      if (mode === "template" && name) templates[name] = text;
+      mode = "";
+      name = "";
+      buf = [];
+      continue;
+    }
+    if (mode) buf.push(line);
+  }
+  return { version, blocks, templates };
+}
+
+function resolvePromptPackPath(cfg) {
+  const explicit = trimmed(cfg?.embedded?.promptPackPath);
+  if (explicit) return path.resolve(explicit);
+  const env = (typeof process !== "undefined" && process && process.env) ? process.env : {};
+  const envPath = trimmed(env.AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH);
+  if (envPath) return path.resolve(envPath);
+  return path.resolve(DEFAULT_PROMPT_PACK_PATH);
+}
+
+function loadPromptPack(cfg, log) {
+  const p = resolvePromptPackPath(cfg);
+  try {
+    const raw = fs.readFileSync(p, "utf8");
+    const pack = parsePromptPack(raw);
+    if (!pack || typeof pack !== "object" || !pack.templates || !pack.blocks) {
+      return null;
+    }
+    if (log && typeof log.info === "function") {
+      const version = trimmed(pack.version) || "unknown";
+      log.info(`[autoskill-openclaw] embedded prompt pack loaded version=${version} path=${p}`);
+    }
+    return pack;
+  } catch (err) {
+    const msg = sanitizeModelCallError(err, "prompt_pack_unavailable");
+    if (log && typeof log.info === "function") {
+      log.info(`[autoskill-openclaw] embedded prompt pack fallback path=${p} reason=${msg}`);
+    }
+    return null;
+  }
+}
+
+function renderPromptText(text, blocks, vars, depth = 0) {
+  if (depth > 12) return asString(text);
+  return asString(text).replace(PROMPT_TOKEN_RE, (_full, tokenRaw) => {
+    const token = trimmed(tokenRaw);
+    if (!token) return "";
+    if (token.startsWith("var.")) {
+      const key = token.slice("var.".length);
+      return asString(vars?.[key]);
+    }
+    if (token.startsWith("block.")) {
+      const key = token.slice("block.".length);
+      const block = blocks && typeof blocks === "object" ? blocks[key] : "";
+      return renderPromptText(block || "", blocks, vars, depth + 1);
+    }
+    return `{{${token}}}`;
+  });
+}
+
+function sharedPrompt(pack, key, fallback, vars = {}) {
+  const template = pack?.templates?.[key];
+  if (!trimmed(template)) return asString(fallback);
+  try {
+    const rendered = renderPromptText(template, pack?.blocks || {}, vars || {}, 0);
+    return trimmed(rendered) ? rendered : asString(fallback);
+  } catch (_) {
+    return asString(fallback);
   }
 }
 
@@ -1107,11 +1211,12 @@ function topBm25Hits(candidate, skills, topK) {
   return ranked;
 }
 
-async function extractCandidate({ invokeModel, sessionMessages, model, metadata }) {
-  const system =
+async function extractCandidate({ invokeModel, sessionMessages, model, metadata, renderSharedPrompt }) {
+  const fallbackSystem =
     "You are AutoSkill embedded extractor for OpenClaw sessions. " +
     "Extract at most one reusable skill from the provided session. " +
     "Only extract if reusable and future-facing. Output strict JSON only.";
+  const system = renderSharedPrompt("embedded.extract.system", fallbackSystem, { max_candidates: 1 });
   const user = jsonDump({
     schema: {
       skills: [
@@ -1148,9 +1253,10 @@ async function extractCandidate({ invokeModel, sessionMessages, model, metadata 
   return normalized;
 }
 
-async function decideAction({ invokeModel, candidate, hits, model, metadata }) {
-  const system =
+async function decideAction({ invokeModel, candidate, hits, model, metadata, renderSharedPrompt }) {
+  const fallbackSystem =
     "You decide skill maintenance action for OpenClaw. Output strict JSON with fields action,target_skill_id,reason.";
+  const system = renderSharedPrompt("embedded.maintain.decide.system", fallbackSystem);
   const user = jsonDump({
     candidate,
     similar_skills: hits.map((h) => ({
@@ -1197,10 +1303,11 @@ async function decideAction({ invokeModel, candidate, hits, model, metadata }) {
   return { action: "add", target: "" };
 }
 
-async function mergeSkillWithModel({ invokeModel, existing, candidate, model, metadata }) {
-  const system =
+async function mergeSkillWithModel({ invokeModel, existing, candidate, model, metadata, renderSharedPrompt }) {
+  const fallbackSystem =
     "Merge existing skill and candidate skill into one skill. " +
     "Output strict JSON with name,description,prompt,triggers,tags.";
+  const system = renderSharedPrompt("embedded.maintain.merge.system", fallbackSystem);
   const user = jsonDump({
     existing: {
       name: existing.name,
@@ -1332,6 +1439,8 @@ export function createEmbeddedProcessor(cfg, api, log, deps = {}) {
   };
   const invokeModel =
     typeof deps.invokeModel === "function" ? deps.invokeModel : createDefaultModelInvoker(cfg, api, log, deps);
+  const promptPack = loadPromptPack(cfg, log);
+  const renderSharedPrompt = (key, fallback, vars = {}) => sharedPrompt(promptPack, key, fallback, vars);
 
   function sessionFilePath(userId, sessionId) {
     const root = path.resolve(cfg.embedded.sessionArchiveDir);
@@ -1413,6 +1522,7 @@ export function createEmbeddedProcessor(cfg, api, log, deps = {}) {
       hits,
       model: modelHint,
       metadata: { autoskill_internal: true, channel: "autoskill_embedded_maintain" },
+      renderSharedPrompt,
     });
     if (decision.action === "discard") {
       return { status: "discarded", reason: "decision_discard" };
@@ -1428,6 +1538,7 @@ export function createEmbeddedProcessor(cfg, api, log, deps = {}) {
         candidate,
         model: modelHint,
         metadata: { autoskill_internal: true, channel: "autoskill_embedded_merge" },
+        renderSharedPrompt,
       });
       const write = writeSkill({
         skillBankDir,
@@ -1517,6 +1628,7 @@ export function createEmbeddedProcessor(cfg, api, log, deps = {}) {
           sessionMessages: session.messages,
           model: modelHint,
           metadata: { autoskill_internal: true, channel: "autoskill_embedded_extract" },
+          renderSharedPrompt,
         });
         if (!candidate) {
           results.push({ session_id: session.session_id, status: "skipped", reason: "no_candidate" });

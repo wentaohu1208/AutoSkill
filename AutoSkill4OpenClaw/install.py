@@ -170,6 +170,7 @@ def _env_template(args: argparse.Namespace, *, repo_dir: Path, workspace_dir: Pa
         "AUTOSKILL_OPENCLAW_USAGE_MAX_HITS_PER_TURN=8\n"
         "AUTOSKILL_OPENCLAW_USAGE_MAX_PENDING_SESSIONS=4096\n"
         "AUTOSKILL_OPENCLAW_USAGE_PENDING_TTL_S=21600\n"
+        "AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH=\n"
         f"AUTOSKILL_LLM_PROVIDER={args.llm_provider}\n"
         f"AUTOSKILL_LLM_MODEL={args.llm_model}\n"
         f"AUTOSKILL_EMBEDDINGS_PROVIDER={args.embeddings_provider}\n"

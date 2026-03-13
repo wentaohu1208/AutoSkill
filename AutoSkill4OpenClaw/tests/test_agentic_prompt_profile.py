@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -63,6 +65,31 @@ class OpenClawAgenticPromptProfileTest(unittest.TestCase):
         self.assertIn("Never invent auxiliary docs like README.md or installation guides.", prompt)
         self.assertIn("scripts/, references/, or assets/", prompt)
         self.assertNotIn("tags, examples, confidence", prompt)
+
+    def test_extract_prompt_can_be_overridden_by_shared_prompt_pack(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            pack = Path(td) / "openclaw_prompt_pack.txt"
+            pack.write_text(
+                "\n".join(
+                    [
+                        "@@version test-override",
+                        "@@template sidecar.extract.system",
+                        "CUSTOM-EXTRACT {{var.max_candidates}}",
+                        "@@end",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            prev = os.environ.get("AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH")
+            os.environ["AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH"] = str(pack)
+            try:
+                prompt = _build_openclaw_agentic_extract_prompt(max_candidates=4)
+            finally:
+                if prev is None:
+                    os.environ.pop("AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH", None)
+                else:
+                    os.environ["AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH"] = prev
+        self.assertIn("CUSTOM-EXTRACT 4", prompt)
 
     def test_decision_prompt_prefers_merge_for_resource_additions(self) -> None:
         llm = _FakeLLM('{"action":"discard","target_skill_id":null,"reason":"not needed"}')

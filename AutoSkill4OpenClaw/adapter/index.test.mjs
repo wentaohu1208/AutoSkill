@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 
 import plugin, {
@@ -580,6 +581,44 @@ test("normalizeConfig supports embedded model invocation env overrides", async (
       assert.equal(cfg.embedded.modelInvocation.manualBaseUrl, "http://127.0.0.1:8999/v1");
       assert.equal(cfg.embedded.modelInvocation.manualApiKey, "k-test");
       assert.equal(cfg.embedded.modelInvocation.manualModel, "m-test");
+    },
+  );
+});
+
+test("normalizeConfig supports embedded prompt pack path from plugin config", async () => {
+  await withEnv(
+    {
+      AUTOSKILL_OPENCLAW_RUNTIME_MODE: "embedded",
+      AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH: "",
+    },
+    async () => {
+      const cfg = normalizeConfig({
+        extractOnAgentEnd: true,
+        embedded: {
+          promptPackPath: "./tmp/custom-openclaw-pack.txt",
+        },
+      });
+      assert.equal(cfg.runtimeMode, "embedded");
+      assert.equal(
+        cfg.embedded.promptPackPath,
+        path.resolve("./tmp/custom-openclaw-pack.txt"),
+      );
+    },
+  );
+});
+
+test("normalizeConfig supports embedded prompt pack path from env", async () => {
+  await withEnv(
+    {
+      AUTOSKILL_OPENCLAW_RUNTIME_MODE: "embedded",
+      AUTOSKILL_OPENCLAW_PROMPT_PACK_PATH: "/tmp/openclaw-shared-pack.txt",
+    },
+    async () => {
+      const cfg = normalizeConfig({
+        extractOnAgentEnd: true,
+      });
+      assert.equal(cfg.runtimeMode, "embedded");
+      assert.equal(cfg.embedded.promptPackPath, "/tmp/openclaw-shared-pack.txt");
     },
   );
 });
