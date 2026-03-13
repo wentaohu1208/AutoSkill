@@ -21,6 +21,7 @@ and continuously evolves existing Skills through merge + version updates.
 
 ## News
 
+- **2026-03-13**: Refactored offline document extraction into top-level `AutoSkill4Doc/`. `autoskill offline document ...` now routes to this package.
 - **2026-03-01**: Added offline skill extraction from archived conversations.
 - **2025-02-26**: **AutoSkill4OpenClaw 1.0** released.
 - **2025-02-04**: **AutoSkill 1.0** released.
@@ -39,6 +40,7 @@ and continuously evolves existing Skills through merge + version updates.
   - [3.2 Retrieve and Respond](#32-retrieve-and-respond)
   - [3.3 Interactive Extraction Policy](#33-interactive-extraction-policy)
   - [3.4 Proxy Serving Flow](#34-proxy-serving-flow)
+  - [3.5 Offline Document Architecture (AutoSkill4Doc)](#35-offline-document-architecture-autoskill4doc)
 - [5. SkillBank Storage Layout](#5-skillbank-storage-layout)
 - [6. Repository Structure (Readable Map)](#6-repository-structure-readable-map)
   - [6.1 Top Level](#61-top-level)
@@ -279,6 +281,22 @@ Client (OpenAI-compatible request)
 - Response latency focuses on retrieval + generation.
 - Skill evolution runs asynchronously to avoid blocking the client.
 
+### 3.5 Offline Document Architecture (AutoSkill4Doc)
+
+```text
+Documents
+  -> ingest (DocumentRecord + hash-based incremental skip)
+  -> extract (SupportRecord + SkillDraft)
+  -> compile (canonical SkillSpec + provenance links)
+  -> versioning (create / strengthen / revise / split / merge / deprecate)
+  -> registry + SkillBank persistence
+```
+
+- The old `autoskill/offline/document` module has been migrated into top-level `AutoSkill4Doc/`.
+- CLI compatibility is preserved: `autoskill offline document build|ingest|extract|compile`.
+- Direct module entry is also supported: `python3 -m AutoSkill4Doc.extract ...`.
+- Detailed document-pipeline design and options: [AutoSkill4Doc/README.md](AutoSkill4Doc/README.md).
+
 ## 5. SkillBank Storage Layout
 
 When using `store={"provider": "local", "path": "SkillBank"}`:
@@ -318,6 +336,7 @@ Notes:
 ### 6.1 Top Level
 
 - `autoskill/`: SDK core.
+- `AutoSkill4Doc/`: standalone offline document-to-skill engine (ingest/extract/compile/versioning/registry).
 - `examples/`: runnable demos and entry scripts.
 - `autoskill/interactive/server.py`: OpenAI-compatible reverse proxy runtime.
 - `AutoSkill4OpenClaw/`: local-deployable OpenClaw sidecar plugin for autoskill interface integration.
@@ -361,8 +380,13 @@ Notes:
 
 ### 6.6 Offline Import
 
+Migration note:
+- `autoskill/offline/document` has been removed.
+- Document offline pipeline is now maintained in `AutoSkill4Doc/`, while `autoskill offline document ...` remains as the stable CLI entry.
+- See [AutoSkill4Doc/README.md](AutoSkill4Doc/README.md) for full staged workflow and configuration details.
+
 - `autoskill/offline/conversation/extract.py`: import OpenAI-format conversation `.json/.jsonl` (single file or directory), then extract and maintain skills.
-- `autoskill/offline/document/extract.py`: import offline document sources and extract reusable skills.
+- `AutoSkill4Doc/extract.py`: import offline document sources and extract reusable skills.
 - `autoskill/offline/trajectory/extract.py`: import offline agentic trajectory data and extract workflow skills.
 
 Offline CLI examples (API keys via `export` env vars, same style as examples):
@@ -381,7 +405,7 @@ python3 -m autoskill.offline.conversation.extract \
   --embeddings-provider dashscope
 
 # 3) Document -> skill extraction
-python3 -m autoskill.offline.document.extract \
+python3 -m AutoSkill4Doc.extract \
   --file ./data/docs \
   --user-id u1 \
   --llm-provider dashscope \

@@ -21,6 +21,7 @@ from ..client import AutoSkill
 from ..llm.base import LLM
 from ..models import Skill, SkillHit
 from ..render import render_skills_context, select_skills_for_context
+from ..utils.skill_resources import extract_skill_resource_paths
 from .commands import Command, parse_command
 from .config import InteractiveConfig
 from .retrieval import retrieve_hits_by_scope
@@ -82,6 +83,7 @@ def _format_hit(hit: SkillHit, *, rank: int) -> Dict[str, Any]:
         "id": str(skill.id),
         "name": str(skill.name),
         "description": str(skill.description),
+        "resource_paths": extract_skill_resource_paths(skill, max_items=12),
         "source": _skill_source_label(skill),
         "owner": str(getattr(skill, "user_id", "") or ""),
         "version": str(getattr(skill, "version", "") or ""),
@@ -103,6 +105,7 @@ def _top_reference_from_hits(hits: List[SkillHit], *, user_id: str) -> Optional[
         "name": str(getattr(skill, "name", "") or "").strip(),
         "description": str(getattr(skill, "description", "") or "").strip(),
         "triggers": [str(t).strip() for t in (getattr(skill, "triggers", []) or []) if str(t).strip()][:20],
+        "resource_paths": extract_skill_resource_paths(skill, max_items=16),
         "scope": scope,
         "score": float(getattr(top, "score", 0.0) or 0.0),
     }

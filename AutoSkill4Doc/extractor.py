@@ -14,7 +14,7 @@ from autoskill.llm.base import LLM
 from autoskill.llm.factory import build_llm
 from autoskill.models import SkillExample
 
-from .common import StageLogger, emit_stage_log, normalize_text
+from .common import StageLogger, document_progress_label, emit_stage_log, normalize_text, summarize_names
 from .llm_utils import (
     clip_confidence,
     coerce_str_list,
@@ -717,12 +717,16 @@ class LLMDocumentSkillExtractor:
         result = SkillExtractionResult(documents=list(documents or []), extractor_name="llm")
         for record in documents or []:
             try:
+                emit_stage_log(
+                    logger,
+                    f"[extract_skills] start {document_progress_label(doc_id=record.doc_id, title=record.title, source_file=str((record.metadata or {}).get('source_file') or ''))}",
+                )
                 supports, drafts = self._extract_from_document(record)
                 result.support_records.extend(supports)
                 result.skill_drafts.extend(drafts)
                 emit_stage_log(
                     logger,
-                    f"[extract_skills] doc={record.doc_id} supports={len(supports)} drafts={len(drafts)}",
+                    f"[extract_skills] done {document_progress_label(doc_id=record.doc_id, title=record.title, source_file=str((record.metadata or {}).get('source_file') or ''))} supports={len(supports)} drafts={len(drafts)} names={summarize_names([draft.name for draft in drafts])}",
                 )
             except Exception as e:
                 result.errors.append({"doc_id": record.doc_id, "error": str(e)})

@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .common import dedupe_strings
 from .models import SerializableModel
 
-_PROFILE_PACKAGE = "autoskill.offline.document.domain_profiles"
+_PROFILE_PACKAGE = "AutoSkill4Doc.domain_profiles"
 
 
 def _coerce_str_list(raw: Any) -> List[str]:

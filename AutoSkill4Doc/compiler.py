@@ -14,7 +14,7 @@ from autoskill.llm.factory import build_llm
 from autoskill.models import SkillExample
 from autoskill.management.extraction import SkillCandidate
 
-from .common import StageLogger, dedupe_strings, emit_stage_log, normalize_text
+from .common import StageLogger, dedupe_strings, emit_stage_log, normalize_text, summarize_names
 from .llm_utils import (
     clip_confidence,
     coerce_str_list,
@@ -459,7 +459,10 @@ class LLMSkillCompiler:
                 result.skill_specs.extend(compiled_specs)
                 for spec in compiled_specs:
                     result.candidates.append(skill_spec_to_candidate(spec))
-                    emit_stage_log(logger, f"[compile_skills] doc={doc_id} skill={spec.skill_id}")
+                emit_stage_log(
+                    logger,
+                    f"[compile_skills] doc={doc_id} skills={len(compiled_specs)} names={summarize_names([spec.name for spec in compiled_specs])}",
+                )
             except Exception as e:
                 result.errors.append({"doc_id": doc_id, "error": str(e)})
                 emit_stage_log(logger, f"[compile_skills] error doc={doc_id}: {e}")

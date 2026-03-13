@@ -144,6 +144,7 @@ class LLMQueryRewriter:
             "### WHAT TO KEEP\n"
             "- Keep: core task/topic + operation + durable constraints from current and relevant recent turns.\n"
             "- Keep constraints that change skill choice: output format, banned structures, depth/detail level, tone, audience, quality requirements.\n"
+            "- Keep explicit reusable resource/tool intent (e.g., script execution, reference reading, template usage) only when user intent requires it.\n"
             "- Keep domain signals only when they help retrieval.\n"
             "\n"
             "### WHAT TO AVOID\n"

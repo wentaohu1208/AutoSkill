@@ -24,7 +24,8 @@ package-dir = {"" = "."}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["autoskill*"]
+include = ["autoskill*", "AutoSkill4Doc*"]
 
 [tool.setuptools.package-data]
 autoskill = ["py.typed"]
+AutoSkill4Doc = ["domain_profiles/*.json"]

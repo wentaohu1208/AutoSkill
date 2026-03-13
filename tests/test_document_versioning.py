@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from autoskill.llm.mock import MockLLM
-from autoskill.offline.document.models import (
+from AutoSkill4Doc.models import (
     DocumentRecord,
     SkillSpec,
     SupportRecord,
@@ -14,8 +14,8 @@ from autoskill.offline.document.models import (
     TextSpan,
     VersionState,
 )
-from autoskill.offline.document.registry import DocumentRegistry
-from autoskill.offline.document.versioning import register_versions
+from AutoSkill4Doc.registry import DocumentRegistry
+from AutoSkill4Doc.versioning import register_versions
 
 
 def _version_llm_response(*, system: str | None, user: str, temperature: float = 0.0, mode: str = "default") -> str:

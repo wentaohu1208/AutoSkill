@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Iterable, List, Optional
 
 from .models import Skill
+from .utils.skill_resources import extract_skill_resource_paths
 from .utils.units import text_units, truncate_keep_head
 
 
@@ -83,6 +84,7 @@ def _render_one(skill: Skill, *, index: int, max_chars: Optional[int] = None) ->
     """Run render one."""
     triggers = "\n".join(f"- {t}" for t in (skill.triggers or [])[:6])
     tags = ", ".join((skill.tags or [])[:10])
+    resource_paths = extract_skill_resource_paths(skill, max_items=12)
     lines = [
         f"### Skill {index}: {skill.name} (v{skill.version})",
         f"- Id: {skill.id}",
@@ -93,6 +95,8 @@ def _render_one(skill: Skill, *, index: int, max_chars: Optional[int] = None) ->
     if triggers:
         lines.append("- Triggers:")
         lines.append(triggers)
+    if resource_paths:
+        lines.append(f"- Resources: {', '.join(resource_paths)}")
     lines.append("- Prompt:")
     base = "\n".join(lines).strip() + "\n"
 

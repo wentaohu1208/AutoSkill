@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from ..llm.base import LLM
 from ..models import Skill
 from ..utils.json import json_from_llm_text
+from ..utils.skill_resources import extract_skill_resource_paths
 from ..utils.text import keywords
 from ..utils.units import text_units, truncate_keep_head
 
@@ -72,6 +73,7 @@ def _skill_brief(skill: Skill, *, max_prompt_chars: int) -> Dict[str, Any]:
         "description": skill.description,
         "tags": list((skill.tags or [])[:8]),
         "triggers": list((skill.triggers or [])[:8]),
+        "resource_paths": extract_skill_resource_paths(skill, max_items=12),
         "prompt_preview": preview,
         "owner": skill.user_id,
     }
@@ -207,6 +209,8 @@ class LLMSkillSelector:
             "- Only select from the provided skill IDs.\n"
             "- Prefer user skills over library skills when equally relevant.\n"
             "- Do not select generic or unrelated skills.\n"
+            "- Consider resource_paths (scripts/references/assets) as utility signals only when they directly help this query.\n"
+            "- Do not select a skill solely because resource path names look similar.\n"
             "- Select at most max_selected.\n"
             "\n"
             "Output ONLY strict JSON (no Markdown, no commentary):\n"

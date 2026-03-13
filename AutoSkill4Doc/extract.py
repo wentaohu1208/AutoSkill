@@ -28,7 +28,7 @@ from .common import StageLogger
 from .extractor import build_document_skill_extractor
 from .models import DocumentRecord, SkillDraft, SkillSpec, SupportRecord, VersionState
 from .pipeline import DocumentBuildPipeline, DocumentBuildResult, build_default_document_pipeline
-from ..provider_config import (
+from autoskill.offline.provider_config import (
     build_embeddings_config as _build_provider_embeddings_config,
     build_llm_config as _build_provider_llm_config,
 )

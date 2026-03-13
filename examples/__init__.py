@@ -8,7 +8,7 @@ Run:
 - `python3 -m examples.openai_proxy`
 - `python3 -m examples.auto_evalution`
 - `python3 -m autoskill.offline.conversation.extract` (new implementation module)
-- `python3 -m autoskill.offline.document.extract`
+- `python3 -m AutoSkill4Doc.extract`
 - `python3 -m autoskill.offline.trajectory.extract`
 
 Note:

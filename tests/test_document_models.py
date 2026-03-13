@@ -4,7 +4,7 @@ import json
 import unittest
 
 from autoskill.models import SkillExample
-from autoskill.offline.document.models import (
+from AutoSkill4Doc.models import (
     DocumentRecord,
     DocumentSection,
     SkillDraft,

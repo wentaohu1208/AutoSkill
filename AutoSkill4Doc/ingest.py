@@ -16,7 +16,7 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
-from .common import StageLogger, emit_stage_log
+from .common import StageLogger, document_progress_label, emit_stage_log
 from .file_loader import data_to_text_unit, load_file_units
 from .models import DocumentRecord, DocumentSection, TextSpan
 from .registry import DocumentRegistry
@@ -266,10 +266,16 @@ class HeuristicDocumentIngestor:
                 )
                 if existing is not None:
                     result.skipped_documents.append(existing)
-                    emit_stage_log(logger, f"[ingest_document] skip unchanged doc={existing.doc_id}")
+                    emit_stage_log(
+                        logger,
+                        f"[ingest_document] skip unchanged {document_progress_label(doc_id=existing.doc_id, title=existing.title, source_file=str((existing.metadata or {}).get('source_file') or ''))}",
+                    )
                     continue
                 result.documents.append(built)
-                emit_stage_log(logger, f"[ingest_document] prepared doc={built.doc_id}")
+                emit_stage_log(
+                    logger,
+                    f"[ingest_document] prepared {document_progress_label(doc_id=built.doc_id, title=built.title, source_file=str((built.metadata or {}).get('source_file') or ''))} sections={len(built.sections or [])}",
+                )
             except Exception as e:
                 result.errors.append({"index": idx, "error": str(e)})
                 emit_stage_log(logger, f"[ingest_document] error index={idx}: {e}")

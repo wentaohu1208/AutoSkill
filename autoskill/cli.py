@@ -38,7 +38,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
     raw_args = list(argv) if argv is not None else sys.argv[1:]
     if raw_args[:2] == ["offline", "document"]:
-        from .offline.document.extract import main as document_main
+        from AutoSkill4Doc.extract import main as document_main
 
         document_args = list(raw_args[2:] or ["-h"])
         document_main(document_args)
@@ -49,7 +49,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     offline_kind = str(getattr(args, "offline_kind", "") or "").strip()
 
     if namespace == "offline" and offline_kind == "document":
-        from .offline.document.extract import main as document_main
+        from AutoSkill4Doc.extract import main as document_main
 
         document_main(list(getattr(args, "document_args", []) or []))
         return

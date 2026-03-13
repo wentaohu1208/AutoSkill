@@ -21,7 +21,7 @@ __all__ = [
 def __getattr__(name: str) -> Any:
     """Run getattr."""
     if name == "extract_from_doc":
-        from .document.extract import extract_from_doc as fn
+        from AutoSkill4Doc.extract import extract_from_doc as fn
 
         return fn
     if name == "extract_from_conversation":

@@ -46,6 +46,7 @@ from ..models import Skill
 from ..render import render_skills_context, select_skills_for_context
 from ..management.formats.agent_skill import parse_agent_skill_md, upsert_skill_md_metadata
 from ..management.stores.local import LocalSkillStore
+from ..utils.skill_resources import extract_resource_paths_from_files, extract_skill_resource_paths
 from ..utils.time import now_iso
 
 _EXTRACT_EVENT_LIMIT = 200
@@ -273,6 +274,7 @@ def _format_retrieval_hit(hit: Any, *, rank: int) -> Dict[str, Any]:
         "id": str(getattr(skill, "id", "") or ""),
         "name": str(getattr(skill, "name", "") or ""),
         "description": str(getattr(skill, "description", "") or ""),
+        "resource_paths": extract_skill_resource_paths(skill, max_items=12),
         "source": _skill_source_label(skill),
         "owner": str(getattr(skill, "user_id", "") or ""),
         "version": str(getattr(skill, "version", "") or ""),
@@ -290,6 +292,7 @@ def _skill_summary(skill: Skill) -> Dict[str, Any]:
         "owner": str(skill.user_id),
         "tags": [str(t) for t in (skill.tags or [])],
         "triggers": [str(t) for t in (skill.triggers or [])],
+        "resource_paths": extract_skill_resource_paths(skill, max_items=16),
         "updated_at": str(skill.updated_at or ""),
     }
 
@@ -311,12 +314,15 @@ def _skill_detail(skill: Skill, *, include_md: bool) -> Dict[str, Any]:
 
 def _candidate_detail(candidate: Any) -> Dict[str, Any]:
     """Run candidate detail."""
+    files = dict(getattr(candidate, "files", {}) or {})
     return {
         "name": str(getattr(candidate, "name", "") or ""),
         "description": str(getattr(candidate, "description", "") or ""),
         "instructions": str(getattr(candidate, "instructions", "") or ""),
         "triggers": [str(t) for t in (getattr(candidate, "triggers", []) or []) if str(t).strip()],
         "tags": [str(t) for t in (getattr(candidate, "tags", []) or []) if str(t).strip()],
+        "resource_paths": extract_resource_paths_from_files(files, max_items=16),
+        "files": {str(k): str(v) for k, v in files.items()},
         "examples": _examples_to_raw(list(getattr(candidate, "examples", []) or [])),
         "confidence": float(getattr(candidate, "confidence", 0.0) or 0.0),
         "source": (dict(getattr(candidate, "source", {}) or {}) if getattr(candidate, "source", None) else None),
@@ -2302,6 +2308,9 @@ class AutoSkillProxyRuntime:
             ref_triggers = [
                 str(t).strip() for t in (skill.get("triggers") or []) if str(t).strip()
             ][:20]
+            ref_resource_paths = [
+                str(p).strip() for p in (skill.get("resource_paths") or []) if str(p).strip()
+            ][:16]
             owner = str(skill.get("owner") or "").strip()
         else:
             ref_id = str(top.get("id") or "").strip()
@@ -2310,6 +2319,9 @@ class AutoSkillProxyRuntime:
             ref_triggers = [
                 str(t).strip() for t in (top.get("triggers") or []) if str(t).strip()
             ][:20]
+            ref_resource_paths = [
+                str(p).strip() for p in (top.get("resource_paths") or []) if str(p).strip()
+            ][:16]
             owner = str(top.get("owner") or "").strip()
         if not ref_id and not ref_name and not ref_desc:
             return None
@@ -2323,6 +2335,7 @@ class AutoSkillProxyRuntime:
             "name": ref_name,
             "description": ref_desc,
             "triggers": ref_triggers,
+            "resource_paths": ref_resource_paths,
             "scope": scope,
             "score": float(top.get("score") or 0.0),
         }

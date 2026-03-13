@@ -6,11 +6,11 @@ import tempfile
 import unittest
 
 from autoskill import AutoSkill, AutoSkillConfig
-from autoskill.offline.document.compiler import _identity_key_for_skill
-from autoskill.offline.document.extractor import build_document_skill_extractor, extract_skills
-from autoskill.offline.document.extract import extract_from_doc
-from autoskill.offline.document.pipeline import build_default_document_pipeline
-from autoskill.offline.document.prompts import OFFLINE_CHANNEL_DOC, build_offline_extract_prompt
+from AutoSkill4Doc.compiler import _identity_key_for_skill
+from AutoSkill4Doc.extractor import build_document_skill_extractor, extract_skills
+from AutoSkill4Doc.extract import extract_from_doc
+from AutoSkill4Doc.pipeline import build_default_document_pipeline
+from AutoSkill4Doc.prompts import OFFLINE_CHANNEL_DOC, build_offline_extract_prompt
 
 
 _DOC_TEXT = """

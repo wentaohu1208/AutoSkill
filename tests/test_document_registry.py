@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from autoskill.config import default_document_store_path
-from autoskill.offline.document.models import (
+from AutoSkill4Doc.models import (
     DocumentRecord,
     SkillLifecycle,
     SkillSpec,
@@ -14,7 +14,7 @@ from autoskill.offline.document.models import (
     TextSpan,
     VersionState,
 )
-from autoskill.offline.document.registry import (
+from AutoSkill4Doc.registry import (
     DocumentRegistry,
     build_registry_from_store_config,
     default_registry_root,

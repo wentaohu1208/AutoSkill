@@ -9,6 +9,7 @@ logging helpers.
 from __future__ import annotations
 
 import re
+import os
 from typing import Callable, Iterable, List, Optional, Sequence, Tuple
 
 StageLogger = Optional[Callable[[str], None]]
@@ -47,6 +48,40 @@ def dedupe_strings(
         seen.add(key)
         out.append(value)
     return out
+
+
+def short_source_label(path: str) -> str:
+    """Returns a compact source label suitable for progress logs."""
+
+    raw = str(path or "").strip()
+    return os.path.basename(raw) if raw else ""
+
+
+def document_progress_label(*, doc_id: str, title: str, source_file: str) -> str:
+    """Builds a concise human-readable document label for progress output."""
+
+    parts: List[str] = []
+    title_s = str(title or "").strip()
+    source_s = short_source_label(source_file)
+    doc_id_s = str(doc_id or "").strip()
+    if title_s:
+        parts.append(f"title={title_s}")
+    if source_s:
+        parts.append(f"file={source_s}")
+    if doc_id_s:
+        parts.append(f"doc={doc_id_s}")
+    return " ".join(parts).strip()
+
+
+def summarize_names(items: Sequence[str], *, limit: int = 5) -> str:
+    """Builds a compact name summary for progress logs."""
+
+    names = dedupe_strings([str(item or "").strip() for item in items if str(item or "").strip()], lower=True)
+    if not names:
+        return "-"
+    if len(names) <= limit:
+        return ", ".join(names)
+    return ", ".join(names[:limit]) + f", +{len(names) - limit} more"
 
 
 _SAFETY_HINTS = (

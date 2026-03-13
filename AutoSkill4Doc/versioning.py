@@ -14,7 +14,7 @@ from autoskill.llm.base import LLM
 from autoskill.llm.factory import build_llm
 from autoskill.utils.time import now_iso
 
-from .common import StageLogger, emit_stage_log
+from .common import StageLogger, emit_stage_log, summarize_names
 from .compiler import _build_structured_prompt, _coerce_examples, skill_spec_to_candidate
 from .llm_utils import (
     coerce_str_list,
@@ -855,7 +855,10 @@ class VersionManager:
                 result.provenance_links.append(secondary["provenance_links"])
             consumed_new_ids.add(new_skill.skill_id)
             consumed_existing_ids.update(decision.matched_skill_ids)
-            emit_stage_log(self.logger, f"[register_versions] merge skill={merged_skill.skill_id} from={decision.matched_skill_ids}")
+            emit_stage_log(
+                self.logger,
+                f"[register_versions] merge name={merged_skill.name} skill={merged_skill.skill_id} from={decision.matched_skill_ids}",
+            )
 
         split_groups: Dict[str, List[ChangeDecision]] = {}
         for decision in decisions:
@@ -894,7 +897,10 @@ class VersionManager:
             result.version_history.append(application["deprecated_parent"]["version_history"])
             result.provenance_links.extend(list(application["provenance_links"] or []))
             result.provenance_links.append(application["deprecated_parent"]["provenance_links"])
-            emit_stage_log(self.logger, f"[register_versions] split skill={parent_id} into={len(bucket)}")
+            emit_stage_log(
+                self.logger,
+                f"[register_versions] split parent={parent_id} children={len(bucket)} names={summarize_names([item.skill.name for item in bucket])}",
+            )
 
         for decision in decisions:
             if decision.skill.skill_id in consumed_new_ids or decision.action == "discard":
@@ -960,7 +966,10 @@ class VersionManager:
                     )
                 )
                 result.provenance_links.append(provenance)
-                emit_stage_log(self.logger, f"[register_versions] create skill={updated_skill.skill_id}")
+                emit_stage_log(
+                    self.logger,
+                    f"[register_versions] create name={updated_skill.name} skill={updated_skill.skill_id}",
+                )
                 continue
 
             existing_skill = existing_skills_by_id.get(decision.matched_skill_ids[0])
@@ -1031,7 +1040,10 @@ class VersionManager:
                     )
                 )
                 result.provenance_links.append(provenance)
-                emit_stage_log(self.logger, f"[register_versions] {decision.action} skill={updated_skill.skill_id}")
+                emit_stage_log(
+                    self.logger,
+                    f"[register_versions] {decision.action} name={updated_skill.name} skill={updated_skill.skill_id}",
+                )
 
         incoming_related = [decision.skill for decision in decisions if decision.action != "discard"]
         if any(support.relation_type == SupportRelation.CONFLICT for support in support_records or []):
@@ -1062,7 +1074,10 @@ class VersionManager:
                 result.version_history.append(deprecated["version_history"])
                 result.provenance_links.append(deprecated["provenance_links"])
                 consumed_existing_ids.add(existing_skill.skill_id)
-                emit_stage_log(self.logger, f"[register_versions] deprecate skill={existing_skill.skill_id}")
+                emit_stage_log(
+                    self.logger,
+                    f"[register_versions] deprecate name={existing_skill.name} skill={existing_skill.skill_id}",
+                )
 
         deduped_skills: Dict[str, SkillSpec] = {}
         for skill in result.skill_specs:
@@ -1154,11 +1169,17 @@ def register_versions(
                             metadata=md,
                         )
                     reconciled.upserted_store_skills = [_plain_skill(skill) for skill in (updated or [])]
-                    emit_stage_log(logger, f"[register_versions] store_upserts={len(reconciled.upserted_store_skills)}")
+                    emit_stage_log(
+                        logger,
+                        f"[register_versions] store_upserts={len(reconciled.upserted_store_skills)} names={summarize_names([str(skill.get('name') or '') for skill in reconciled.upserted_store_skills])}",
+                    )
                 except Exception as e:
                     reconciled.errors.append({"stage": "store_upsert", "error": str(e)})
                     emit_stage_log(logger, f"[register_versions] store upsert error: {e}")
             else:
-                emit_stage_log(logger, f"[register_versions] dry-run store_upserts={len(candidates)}")
+                emit_stage_log(
+                    logger,
+                    f"[register_versions] dry-run store_upserts={len(candidates)} names={summarize_names([candidate.name for candidate in candidates])}",
+                )
 
     return reconciled

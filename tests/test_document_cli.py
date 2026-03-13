@@ -9,7 +9,7 @@ import unittest
 
 from autoskill.cli import main as autoskill_main
 from autoskill.config import default_document_store_path
-from autoskill.offline.document.extract import _build_sdk_from_args, build_parser, main
+from AutoSkill4Doc.extract import _build_sdk_from_args, build_parser, main
 
 
 _DOC_TEXT = """
@@ -233,6 +233,32 @@ class DocumentCliTest(unittest.TestCase):
         sdk = _build_sdk_from_args(args)
 
         self.assertEqual(sdk.config.store.get("path"), default_document_store_path())
+
+    def test_build_without_quiet_shows_document_and_skill_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            doc_path = self._write_doc(root=tmpdir)
+            output = self._run_text(
+                main,
+                [
+                    "build",
+                    "--file",
+                    doc_path,
+                    "--dry-run",
+                    "--llm-provider",
+                    "mock",
+                    "--llm-response",
+                    self._mock_response(),
+                    "--maintenance-strategy",
+                    "llm",
+                    "--store-path",
+                    tmpdir,
+                ],
+            )
+
+            self.assertIn("[ingest_document] prepared", output)
+            self.assertIn("document.md", output)
+            self.assertIn("[extract_skills] done", output)
+            self.assertIn("document intake workflow", output)
 
 
 if __name__ == "__main__":
