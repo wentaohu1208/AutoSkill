@@ -15,16 +15,16 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from autoskill import AutoSkill
-from autoskill.config import default_document_store_path
 
-from .common import StageLogger
-from .compiler import (
+from .core.common import StageLogger
+from .core.config import DEFAULT_EXTRACT_STRATEGY, default_store_path
+from .stages.compiler import (
     SkillCompilationResult,
     SkillCompiler,
     build_skill_compiler,
     compile_skills,
 )
-from .extractor import (
+from .stages.extractor import (
     DocumentSkillExtractor,
     SkillExtractionResult,
     build_document_skill_extractor,
@@ -37,8 +37,9 @@ from .ingest import (
     ingest_document,
 )
 from .models import DocumentRecord, SkillDraft, SkillSpec, SupportRecord, VersionState
-from .registry import DocumentRegistry, build_registry_from_store_config
-from .versioning import VersionRegistrationResult, register_versions
+from .models import StrictWindow
+from .store.registry import DocumentRegistry, build_registry_from_store_config
+from .store.versioning import VersionRegistrationResult, register_versions
 
 
 @dataclass
@@ -58,7 +59,8 @@ class DocumentBuildResult:
             "dry_run": bool(self.dry_run),
             "documents": len(self.ingest.documents),
             "skipped_documents": len(self.ingest.skipped_documents),
-            "support_records": len(self.extracted.support_records),
+            "windows": len(self.ingest.windows),
+            "support_records": len(self.compiled.support_records),
             "skill_drafts": len(self.extracted.skill_drafts),
             "skill_specs": len(self.compiled.skill_specs),
             "lifecycles": len(self.registration.lifecycles),
@@ -66,6 +68,9 @@ class DocumentBuildResult:
             "version_history_entries": len(self.registration.version_history),
             "provenance_links": len(self.registration.provenance_links),
             "store_upserts": len(self.registration.upserted_store_skills),
+            "staging_runs": len(self.registration.staging_runs),
+            "visible_schools": len(list((self.registration.visible_tree or {}).get("affected_schools") or [])),
+            "visible_children": len(list((self.registration.visible_tree or {}).get("child_paths") or [])),
             "errors": (
                 list(self.ingest.errors)
                 + list(self.extracted.errors)
@@ -109,6 +114,8 @@ class DocumentBuildPipeline:
         continue_on_error: bool = True,
         dry_run: bool = False,
         max_documents: int = 0,
+        extract_strategy: str = DEFAULT_EXTRACT_STRATEGY,
+        domain_profile_path: str = "",
     ) -> DocumentIngestResult:
         """Runs the ingestion stage only."""
 
@@ -124,6 +131,8 @@ class DocumentBuildPipeline:
             continue_on_error=continue_on_error,
             dry_run=dry_run,
             max_documents=max_documents,
+            extract_strategy=extract_strategy,
+            domain_profile_path=domain_profile_path,
             logger=self.logger,
         )
 
@@ -131,11 +140,13 @@ class DocumentBuildPipeline:
         self,
         *,
         documents: List[DocumentRecord],
+        windows: Optional[List[StrictWindow]] = None,
     ) -> SkillExtractionResult:
         """Runs the direct skill extraction stage only."""
 
         return extract_skills(
             documents=list(documents or []),
+            windows=list(windows or []),
             extractor=self.document_skill_extractor,
             logger=self.logger,
         )
@@ -197,6 +208,8 @@ class DocumentBuildPipeline:
         dry_run: bool = False,
         target_state: Optional[VersionState] = None,
         max_documents: int = 0,
+        extract_strategy: str = DEFAULT_EXTRACT_STRATEGY,
+        domain_profile_path: str = "",
     ) -> DocumentBuildResult:
         """Runs the full offline document build pipeline."""
 
@@ -211,8 +224,10 @@ class DocumentBuildPipeline:
             continue_on_error=continue_on_error,
             dry_run=dry_run,
             max_documents=max_documents,
+            extract_strategy=extract_strategy,
+            domain_profile_path=domain_profile_path,
         )
-        extracted_result = self.extract_skills(documents=ingest_result.documents)
+        extracted_result = self.extract_skills(documents=ingest_result.documents, windows=ingest_result.windows)
         compiled_result = self.compile_skills(
             skill_drafts=extracted_result.skill_drafts,
             support_records=extracted_result.support_records,
@@ -251,9 +266,9 @@ def build_default_document_pipeline(
     elif sdk is not None:
         registry = build_registry_from_store_config(dict(getattr(getattr(sdk, "config", None), "store", {}) or {}))
     else:
-        from .registry import default_registry_root
+        from .store.registry import default_registry_root
 
-        registry = DocumentRegistry(root_dir=default_registry_root(default_document_store_path()))
+        registry = DocumentRegistry(root_dir=default_registry_root(default_store_path()))
     return DocumentBuildPipeline(
         registry=registry,
         sdk=sdk,

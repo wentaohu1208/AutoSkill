@@ -18,6 +18,7 @@ dependencies = []
 
 [project.scripts]
 autoskill = "autoskill.cli:main"
+autoskill4doc = "AutoSkill4Doc.extract:main"
 
 [tool.setuptools]
 package-dir = {"" = "."}

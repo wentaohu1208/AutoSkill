@@ -7,6 +7,9 @@ from typing import Any
 __all__ = [
     "extract_from_doc",
     "main",
+    "default_store_path",
+    "default_runtime_root",
+    "default_registry_root",
     "DocumentBuildPipeline",
     "DocumentBuildResult",
     "build_default_document_pipeline",
@@ -15,8 +18,15 @@ __all__ = [
     "compile_skills",
     "register_versions",
     "VersionManager",
+    "sync_visible_skill_tree",
+    "run_document_diag",
+    "retrieve_hierarchy",
+    "canonical_merge_from_staging",
+    "migrate_layout",
     "DocumentRecord",
     "DocumentSection",
+    "TextUnit",
+    "StrictWindow",
     "SupportRecord",
     "SupportRelation",
     "SkillDraft",
@@ -30,7 +40,13 @@ __all__ = [
     "list_builtin_domain_profiles",
     "DocumentRegistry",
     "build_registry_from_store_config",
-    "default_registry_root",
+    "normalize_library_root",
+    "runtime_root",
+    "staging_root",
+    "library_manifest_path",
+    "latest_run_id",
+    "list_child_types",
+    "read_run_payload",
 ]
 
 
@@ -45,6 +61,15 @@ def __getattr__(name: str) -> Any:
         from .extract import main as fn
 
         return fn
+    if name in {"default_store_path", "default_runtime_root", "default_registry_root"}:
+        from .core.config import default_registry_root, default_runtime_root, default_store_path
+
+        mapping = {
+            "default_store_path": default_store_path,
+            "default_runtime_root": default_runtime_root,
+            "default_registry_root": default_registry_root,
+        }
+        return mapping[name]
     if name in {
         "DocumentBuildPipeline",
         "DocumentBuildResult",
@@ -68,11 +93,21 @@ def __getattr__(name: str) -> Any:
         "compile_skills",
         "register_versions",
         "VersionManager",
+        "sync_visible_skill_tree",
+        "run_document_diag",
+        "retrieve_hierarchy",
+        "canonical_merge_from_staging",
+        "migrate_layout",
     }:
-        from .compiler import compile_skills
-        from .extractor import extract_skills
         from .ingest import ingest_document
-        from .versioning import VersionManager, register_versions
+        from .stages.compiler import compile_skills
+        from .stages.diag import run_document_diag
+        from .stages.extractor import extract_skills
+        from .stages.hierarchy import retrieve_hierarchy
+        from .stages.merge import canonical_merge_from_staging
+        from .stages.migrate import migrate_layout
+        from .store.versioning import VersionManager, register_versions
+        from .store.visible_tree import sync_visible_skill_tree
 
         mapping = {
             "ingest_document": ingest_document,
@@ -80,11 +115,18 @@ def __getattr__(name: str) -> Any:
             "compile_skills": compile_skills,
             "register_versions": register_versions,
             "VersionManager": VersionManager,
+            "sync_visible_skill_tree": sync_visible_skill_tree,
+            "run_document_diag": run_document_diag,
+            "retrieve_hierarchy": retrieve_hierarchy,
+            "canonical_merge_from_staging": canonical_merge_from_staging,
+            "migrate_layout": migrate_layout,
         }
         return mapping[name]
     if name in {
         "DocumentRecord",
         "DocumentSection",
+        "TextUnit",
+        "StrictWindow",
         "SupportRecord",
         "SupportRelation",
         "SkillDraft",
@@ -96,11 +138,13 @@ def __getattr__(name: str) -> Any:
         from .models import (
             DocumentRecord,
             DocumentSection,
+            StrictWindow,
             SkillDraft,
             SkillLifecycle,
             SkillSpec,
             SupportRecord,
             SupportRelation,
+            TextUnit,
             TextSpan,
             VersionState,
         )
@@ -108,6 +152,8 @@ def __getattr__(name: str) -> Any:
         mapping = {
             "DocumentRecord": DocumentRecord,
             "DocumentSection": DocumentSection,
+            "TextUnit": TextUnit,
+            "StrictWindow": StrictWindow,
             "SupportRecord": SupportRecord,
             "SupportRelation": SupportRelation,
             "SkillDraft": SkillDraft,
@@ -127,17 +173,34 @@ def __getattr__(name: str) -> Any:
             "list_builtin_domain_profiles": list_builtin_domain_profiles,
         }
         return mapping[name]
-    if name in {"DocumentRegistry", "build_registry_from_store_config", "default_registry_root"}:
-        from .registry import (
+    if name in {
+        "DocumentRegistry",
+        "build_registry_from_store_config",
+        "normalize_library_root",
+        "runtime_root",
+        "staging_root",
+        "library_manifest_path",
+        "latest_run_id",
+        "list_child_types",
+        "read_run_payload",
+    }:
+        from .store.registry import (
             DocumentRegistry,
             build_registry_from_store_config,
-            default_registry_root,
         )
+        from .store.layout import library_manifest_path, normalize_library_root, runtime_root, staging_root
+        from .store.staging import latest_run_id, list_child_types, read_run_payload
 
         mapping = {
             "DocumentRegistry": DocumentRegistry,
             "build_registry_from_store_config": build_registry_from_store_config,
-            "default_registry_root": default_registry_root,
+            "normalize_library_root": normalize_library_root,
+            "runtime_root": runtime_root,
+            "staging_root": staging_root,
+            "library_manifest_path": library_manifest_path,
+            "latest_run_id": latest_run_id,
+            "list_child_types": list_child_types,
+            "read_run_payload": read_run_payload,
         }
         return mapping[name]
     raise AttributeError(name)

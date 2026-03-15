@@ -3,11 +3,12 @@
 [English](README.md) | 中文
 
 `autoskill.offline` 是离线批处理入口层，负责把历史数据接入技能抽取流程。
-当前包含三类 pipeline：
+当前仍在包内维护的 pipeline 包括：
 
 - `conversation`：历史 OpenAI 格式对话 -> skills
 - `trajectory`：agent 执行轨迹/事件 -> workflow skills
-- `document`：文档语料 -> skills（由 `AutoSkill4Doc` 实现）
+
+文档 pipeline 已迁移为仓库根目录下的独立 `AutoSkill4Doc` 包。
 
 ## Document Pipeline 文档
 
@@ -19,7 +20,7 @@
 迁移说明：
 
 - 旧目录 `autoskill/offline/document/` 已移除。
-- `autoskill offline document ...` 已路由到 `AutoSkill4Doc.extract`。
+- 文档抽取现在由 `AutoSkill4Doc` 独立承担，不再通过 `autoskill.offline` 路由。
 
 ## CLI 用法
 
@@ -39,16 +40,16 @@ python3 -m autoskill.offline.trajectory.extract \
   --user-id u1
 ```
 
-Document（顶层路由）：
+Document（独立包）：
 
 ```bash
-python3 -m autoskill offline document build --file ./paper.md --dry-run
+python3 -m AutoSkill4Doc llm-extract --file ./paper.md --dry-run
 ```
 
-Document（直连模块）：
+Document（安装脚本）：
 
 ```bash
-python3 -m AutoSkill4Doc.extract build --file ./paper.md --dry-run
+autoskill4doc llm-extract --file ./paper.md --json
 ```
 
 ## 包结构
@@ -62,13 +63,22 @@ autoskill/offline/
 
 AutoSkill4Doc/
   __init__.py
+  __main__.py
   extract.py
   pipeline.py
-  extractor.py
-  compiler.py
-  versioning.py
-  registry.py
   models.py
   profile.py
+  prompts.py
+  core/
+    config.py
+    provider_config.py
+  document/
+    windowing.py
+  stages/
+    extractor.py
+    compiler.py
+  store/
+    versioning.py
+    registry.py
   domain_profiles/
 ```

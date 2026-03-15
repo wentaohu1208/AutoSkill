@@ -5,10 +5,10 @@ import os
 import tempfile
 import unittest
 
-from AutoSkill4Doc.extractor import build_document_skill_extractor, extract_skills
+from AutoSkill4Doc.stages.extractor import build_document_skill_extractor, extract_skills
 from AutoSkill4Doc.ingest import ingest_document
 from AutoSkill4Doc.profile import list_builtin_domain_profiles, load_domain_profile
-from AutoSkill4Doc.registry import DocumentRegistry
+from AutoSkill4Doc.store.registry import DocumentRegistry
 
 
 def _profile_extract_response(*, system: str | None, user: str, temperature: float = 0.0, mode: str = "default") -> str:

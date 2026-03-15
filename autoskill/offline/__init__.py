@@ -12,7 +12,6 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
-    "extract_from_doc",
     "extract_from_conversation",
     "extract_from_agentic_trajectory",
 ]
@@ -20,10 +19,6 @@ __all__ = [
 
 def __getattr__(name: str) -> Any:
     """Run getattr."""
-    if name == "extract_from_doc":
-        from AutoSkill4Doc.extract import extract_from_doc as fn
-
-        return fn
     if name == "extract_from_conversation":
         from .conversation.extract import extract_from_conversation as fn
 

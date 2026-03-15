@@ -18,5 +18,7 @@ SkillBank/index/skills-bm25.*
 SkillBank/index/skill_usage_stats.json
 SkillBank/Users/
 SkillBank/vectors/
+SkillBank/AutoSkill4Doc/
+SkillBank/DocSkill/
 examples/eval_reports/
 data/

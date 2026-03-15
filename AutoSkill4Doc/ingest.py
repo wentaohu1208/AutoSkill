@@ -16,10 +16,12 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
-from .common import StageLogger, document_progress_label, emit_stage_log
-from .file_loader import data_to_text_unit, load_file_units
-from .models import DocumentRecord, DocumentSection, TextSpan
-from .registry import DocumentRegistry
+from .core.common import StageLogger, document_progress_label, emit_stage_log
+from .core.config import DEFAULT_EXTRACT_STRATEGY, normalize_extract_strategy
+from .document.file_loader import data_to_text_unit, load_file_units
+from .document.windowing import build_windows_for_record
+from .models import DocumentRecord, DocumentSection, StrictWindow, TextSpan, TextUnit
+from .store.registry import DocumentRegistry
 
 
 def compute_content_hash(
@@ -188,8 +190,10 @@ def _source_key_for_unit(unit: Dict[str, Any], default_title: str) -> str:
 class DocumentIngestResult:
     """Output of the document ingestion stage."""
 
+    text_units: List[TextUnit] = field(default_factory=list)
     documents: List[DocumentRecord] = field(default_factory=list)
     skipped_documents: List[DocumentRecord] = field(default_factory=list)
+    windows: List[StrictWindow] = field(default_factory=list)
     errors: List[Dict[str, Any]] = field(default_factory=list)
     source_file: Optional[str] = None
 
@@ -210,6 +214,8 @@ class DocumentIngestor(Protocol):
         continue_on_error: bool,
         dry_run: bool,
         max_documents: int,
+        extract_strategy: str,
+        domain_profile_path: str,
         logger: StageLogger,
     ) -> DocumentIngestResult:
         """Runs the ingestion stage and returns normalized document records."""
@@ -231,6 +237,8 @@ class HeuristicDocumentIngestor:
         continue_on_error: bool,
         dry_run: bool,
         max_documents: int,
+        extract_strategy: str,
+        domain_profile_path: str,
         logger: StageLogger,
     ) -> DocumentIngestResult:
         """Normalizes input into DocumentRecord objects and performs incremental skipping."""
@@ -244,10 +252,32 @@ class HeuristicDocumentIngestor:
             raise ValueError("ingest_document requires data or file_path")
 
         result = DocumentIngestResult(source_file=(abs_input or None))
+        if not units and abs_input and os.path.isfile(abs_input):
+            message = f"no readable text extracted from file: {abs_input}"
+            result.errors.append({"source_file": abs_input, "error": message})
+            emit_stage_log(logger, f"[ingest_document] error source_file={abs_input}: {message}")
+            if not continue_on_error:
+                raise ValueError(message)
+            return result
+        if not units and abs_input and os.path.isdir(abs_input):
+            message = f"no readable text extracted from directory: {abs_input}"
+            result.errors.append({"source_file": abs_input, "error": message})
+            emit_stage_log(logger, f"[ingest_document] error source_file={abs_input}: {message}")
+            if not continue_on_error:
+                raise ValueError(message)
+            return result
         base_md = dict(metadata or {})
 
         for idx, unit in enumerate(units):
             try:
+                text_unit = self._build_text_unit(
+                    unit=unit,
+                    default_title=title,
+                    source_type=source_type,
+                    domain=domain,
+                    metadata=base_md,
+                )
+                result.text_units.append(text_unit)
                 built = self._build_record(
                     unit=unit,
                     default_title=title,
@@ -271,10 +301,17 @@ class HeuristicDocumentIngestor:
                         f"[ingest_document] skip unchanged {document_progress_label(doc_id=existing.doc_id, title=existing.title, source_file=str((existing.metadata or {}).get('source_file') or ''))}",
                     )
                     continue
+                result.windows.extend(
+                    build_windows_for_record(
+                        built,
+                        strategy=extract_strategy,
+                        domain_profile_path=domain_profile_path,
+                    )
+                )
                 result.documents.append(built)
                 emit_stage_log(
                     logger,
-                    f"[ingest_document] prepared {document_progress_label(doc_id=built.doc_id, title=built.title, source_file=str((built.metadata or {}).get('source_file') or ''))} sections={len(built.sections or [])}",
+                    f"[ingest_document] prepared {document_progress_label(doc_id=built.doc_id, title=built.title, source_file=str((built.metadata or {}).get('source_file') or ''))} sections={len(built.sections or [])} windows={len([w for w in result.windows if w.doc_id == built.doc_id])}",
                 )
             except Exception as e:
                 result.errors.append({"index": idx, "error": str(e)})
@@ -282,6 +319,36 @@ class HeuristicDocumentIngestor:
                 if not continue_on_error:
                     raise
         return result
+
+    def _build_text_unit(
+        self,
+        *,
+        unit: Dict[str, Any],
+        default_title: str,
+        source_type: str,
+        domain: str,
+        metadata: Dict[str, Any],
+    ) -> TextUnit:
+        """Builds one normalized text unit from raw input payload."""
+
+        raw = str(unit.get("raw_text") or unit.get("text") or "").strip()
+        title_value = str(unit.get("title") or "").strip() or str(default_title or "").strip() or "document"
+        source_file = str(unit.get("source_file") or "").strip()
+        md = dict(metadata or {})
+        md.update(dict(unit.get("metadata") or {}))
+        if source_file:
+            md.setdefault("source_file", source_file)
+        source_key = _source_key_for_unit(unit, default_title=title_value)
+        unit_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"autoskill4doc-unit:{source_key}"))
+        return TextUnit(
+            unit_id=unit_id,
+            title=title_value,
+            text=raw,
+            source_file=source_file,
+            source_type=_normalize_source_type(source_type, source_file),
+            domain=str(unit.get("domain") or domain or "").strip(),
+            metadata=md,
+        )
 
     def _build_record(
         self,
@@ -361,6 +428,8 @@ def ingest_document(
     continue_on_error: bool = True,
     dry_run: bool = False,
     max_documents: int = 0,
+    extract_strategy: str = DEFAULT_EXTRACT_STRATEGY,
+    domain_profile_path: str = "",
     logger: StageLogger = None,
 ) -> DocumentIngestResult:
     """Public functional wrapper for the document ingestion stage."""
@@ -377,5 +446,7 @@ def ingest_document(
         continue_on_error=continue_on_error,
         dry_run=bool(dry_run),
         max_documents=int(max_documents or 0),
+        extract_strategy=normalize_extract_strategy(extract_strategy),
+        domain_profile_path=str(domain_profile_path or "").strip(),
         logger=logger,
     )

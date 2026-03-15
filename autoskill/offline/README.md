@@ -3,11 +3,13 @@
 English | [中文](README.zh-CN.md)
 
 `autoskill.offline` provides batch/offline extraction workflows for archived data.
-It is the integration layer for three pipelines:
+It currently covers the in-package pipelines below:
 
 - `conversation`: archived OpenAI-format conversations -> skills
 - `trajectory`: agent trajectories/events -> workflow skills
-- `document`: document corpus -> skills (implemented by `AutoSkill4Doc`)
+
+The document pipeline has been moved out into the standalone `AutoSkill4Doc`
+package at the repository root.
 
 ## Document Pipeline Docs
 
@@ -18,7 +20,7 @@ The document pipeline has been split into a standalone root module:
 
 Legacy note:
 - `autoskill/offline/document/` has been removed.
-- `autoskill offline document ...` now routes to `AutoSkill4Doc.extract`.
+- document extraction is now standalone in `AutoSkill4Doc` and is no longer routed through `autoskill.offline`.
 
 ## CLI Usage
 
@@ -38,16 +40,16 @@ python3 -m autoskill.offline.trajectory.extract \
   --user-id u1
 ```
 
-Document (through top-level router):
+Document (standalone package):
 
 ```bash
-python3 -m autoskill offline document build --file ./paper.md --dry-run
+python3 -m AutoSkill4Doc llm-extract --file ./paper.md --dry-run
 ```
 
-Document (direct module):
+Document (installed script):
 
 ```bash
-python3 -m AutoSkill4Doc.extract build --file ./paper.md --dry-run
+autoskill4doc llm-extract --file ./paper.md --json
 ```
 
 ## Package Layout
@@ -61,13 +63,22 @@ autoskill/offline/
 
 AutoSkill4Doc/
   __init__.py
+  __main__.py
   extract.py
   pipeline.py
-  extractor.py
-  compiler.py
-  versioning.py
-  registry.py
   models.py
   profile.py
+  prompts.py
+  core/
+    config.py
+    provider_config.py
+  document/
+    windowing.py
+  stages/
+    extractor.py
+    compiler.py
+  store/
+    versioning.py
+    registry.py
   domain_profiles/
 ```

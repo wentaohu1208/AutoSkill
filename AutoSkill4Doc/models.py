@@ -1,8 +1,10 @@
 """
-Core models for the skill-first offline document pipeline.
+Core models for the standalone offline document pipeline.
 
-The current document pipeline is organized around:
+The current pipeline uses a staged document-to-skill shape:
 - DocumentRecord: normalized source document
+- TextUnit: reusable paragraph/bullet level text block
+- StrictWindow: extraction window derived from filtered sections/text units
 - SupportRecord: lightweight support/conflict trace attached to a skill
 - SkillDraft: extracted executable draft before batch normalization
 - SkillSpec: canonicalized skill ready for versioning and store upsert
@@ -22,7 +24,7 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 
 from autoskill.models import SkillExample
 from autoskill.utils.time import now_iso
-from .common import refine_asset_shape
+from .core.common import refine_asset_shape
 
 T = TypeVar("T", bound="SerializableModel")
 
@@ -482,6 +484,130 @@ class DocumentRecord(SerializableModel):
             checksum=str(data.get("checksum") or "").strip(),
             content_hash=str(data.get("content_hash") or "").strip(),
             imported_at=str(data.get("imported_at") or "").strip(),
+        )
+
+
+@dataclass
+class TextUnit(SerializableModel):
+    """Normalized raw input unit before section filtering and windowing."""
+
+    unit_id: str
+    title: str
+    text: str
+    source_file: str = ""
+    source_type: str = "document"
+    domain: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Normalizes text-unit fields and validates required content."""
+
+        self.unit_id = str(self.unit_id or "").strip()
+        self.title = str(self.title or "").strip()
+        self.text = str(self.text or "")
+        self.source_file = str(self.source_file or "").strip()
+        self.source_type = str(self.source_type or "").strip() or "document"
+        self.domain = str(self.domain or "").strip()
+        self.metadata = _coerce_str_dict(self.metadata)
+        self.validate()
+
+    def validate(self) -> None:
+        """Ensures the text unit keeps stable identity and non-empty content."""
+
+        if not self.unit_id:
+            raise ValueError("text unit id must not be empty")
+        if not self.title:
+            raise ValueError("text unit title must not be empty")
+        if not self.text.strip():
+            raise ValueError("text unit text must not be empty")
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TextUnit":
+        """Builds a TextUnit from a plain dict."""
+
+        return cls(
+            unit_id=str(data.get("unit_id") or "").strip(),
+            title=str(data.get("title") or "").strip(),
+            text=str(data.get("text") or ""),
+            source_file=str(data.get("source_file") or "").strip(),
+            source_type=str(data.get("source_type") or "document").strip() or "document",
+            domain=str(data.get("domain") or "").strip(),
+            metadata=_coerce_str_dict(data.get("metadata")),
+        )
+
+
+@dataclass
+class StrictWindow(SerializableModel):
+    """Anchor-driven local task block prepared for downstream extraction."""
+
+    window_id: str
+    doc_id: str
+    source_file: str = ""
+    unit_title: str = ""
+    section_heading: str = ""
+    section_level: int = 1
+    paragraph_start: int = 0
+    paragraph_end: int = 0
+    anchor_hits: List[str] = field(default_factory=list)
+    text: str = ""
+    span: TextSpan = field(default_factory=TextSpan)
+    strategy: str = "strict"
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Normalizes window fields and validates local extraction boundaries."""
+
+        self.window_id = str(self.window_id or "").strip()
+        self.doc_id = str(self.doc_id or "").strip()
+        self.source_file = str(self.source_file or "").strip()
+        self.unit_title = str(self.unit_title or "").strip()
+        self.section_heading = str(self.section_heading or "").strip()
+        self.section_level = int(self.section_level or 1)
+        self.paragraph_start = int(self.paragraph_start or 0)
+        self.paragraph_end = int(self.paragraph_end or 0)
+        self.anchor_hits = _coerce_str_list(self.anchor_hits)
+        self.text = str(self.text or "")
+        if not isinstance(self.span, TextSpan):
+            self.span = TextSpan.from_dict(_coerce_str_dict(self.span))
+        self.strategy = str(self.strategy or "strict").strip() or "strict"
+        self.metadata = _coerce_str_dict(self.metadata)
+        self.validate()
+
+    def validate(self) -> None:
+        """Ensures the window identifies one document-local non-empty text range."""
+
+        if not self.window_id:
+            raise ValueError("window_id must not be empty")
+        if not self.doc_id:
+            raise ValueError("doc_id must not be empty")
+        if not self.section_heading:
+            raise ValueError("section_heading must not be empty")
+        if self.section_level <= 0:
+            raise ValueError("section_level must be positive")
+        if self.paragraph_start < 0 or self.paragraph_end < self.paragraph_start:
+            raise ValueError("invalid paragraph range")
+        if not self.text.strip():
+            raise ValueError("window text must not be empty")
+        self.span.validate()
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "StrictWindow":
+        """Builds a StrictWindow from a plain dict."""
+
+        return cls(
+            window_id=str(data.get("window_id") or "").strip(),
+            doc_id=str(data.get("doc_id") or "").strip(),
+            source_file=str(data.get("source_file") or "").strip(),
+            unit_title=str(data.get("unit_title") or "").strip(),
+            section_heading=str(data.get("section_heading") or "").strip(),
+            section_level=int(data.get("section_level", 1) or 1),
+            paragraph_start=int(data.get("paragraph_start", 0) or 0),
+            paragraph_end=int(data.get("paragraph_end", 0) or 0),
+            anchor_hits=_coerce_str_list(data.get("anchor_hits")),
+            text=str(data.get("text") or ""),
+            span=TextSpan.from_dict(_coerce_str_dict(data.get("span"))),
+            strategy=str(data.get("strategy") or "strict").strip() or "strict",
+            metadata=_coerce_str_dict(data.get("metadata")),
         )
 
 

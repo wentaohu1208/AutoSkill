@@ -386,7 +386,7 @@ Migration note:
 - See [AutoSkill4Doc/README.md](AutoSkill4Doc/README.md) for full staged workflow and configuration details.
 
 - `autoskill/offline/conversation/extract.py`: import OpenAI-format conversation `.json/.jsonl` (single file or directory), then extract and maintain skills.
-- `AutoSkill4Doc/extract.py`: import offline document sources and extract reusable skills.
+- `AutoSkill4Doc/extract.py`: import offline document sources, build visible parent/child skill trees, inspect staging runs, and browse hierarchy.
 - `autoskill/offline/trajectory/extract.py`: import offline agentic trajectory data and extract workflow skills.
 
 Offline CLI examples (API keys via `export` env vars, same style as examples):
@@ -405,7 +405,7 @@ python3 -m autoskill.offline.conversation.extract \
   --embeddings-provider dashscope
 
 # 3) Document -> skill extraction
-python3 -m AutoSkill4Doc build \
+python3 -m AutoSkill4Doc llm-extract \
   --file ./data/docs \
   --user-id u1 \
   --llm-provider dashscope \

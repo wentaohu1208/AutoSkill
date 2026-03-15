@@ -1,12 +1,13 @@
 """
-Domain profile loading for the offline document pipeline.
+Domain profile loading for the standalone document pipeline.
 
 Profiles provide editable extraction priors such as:
 - task vocabularies
 - method vocabularies
 - stage vocabularies
 
-The runtime stays skill-first; profiles only guide extraction and normalization.
+Profiles only guide extraction and normalization; they should not encode
+document-domain logic directly into the pipeline implementation.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from .common import dedupe_strings
+from .core.common import dedupe_strings
 from .models import SerializableModel
 
 _PROFILE_PACKAGE = "AutoSkill4Doc.domain_profiles"

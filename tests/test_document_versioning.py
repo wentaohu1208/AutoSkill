@@ -14,8 +14,8 @@ from AutoSkill4Doc.models import (
     TextSpan,
     VersionState,
 )
-from AutoSkill4Doc.registry import DocumentRegistry
-from AutoSkill4Doc.versioning import register_versions
+from AutoSkill4Doc.store.registry import DocumentRegistry
+from AutoSkill4Doc.store.versioning import register_versions
 
 
 def _version_llm_response(*, system: str | None, user: str, temperature: float = 0.0, mode: str = "default") -> str:
@@ -184,6 +184,7 @@ class DocumentVersioningTest(unittest.TestCase):
         skills: list[SkillSpec],
         dry_run: bool = False,
         target_state: VersionState = VersionState.ACTIVE,
+        metadata: dict[str, str] | None = None,
     ):
         return register_versions(
             registry=registry,
@@ -192,7 +193,7 @@ class DocumentVersioningTest(unittest.TestCase):
             skill_specs=skills,
             llm=self._llm(),
             user_id="u1",
-            metadata={"channel": "offline_extract_from_doc"},
+            metadata={"channel": "offline_extract_from_doc", **dict(metadata or {})},
             dry_run=dry_run,
             target_state=target_state,
         )
@@ -452,6 +453,138 @@ class DocumentVersioningTest(unittest.TestCase):
             ]
             self.assertTrue(active_created)
             self.assertTrue(any(event.reason.startswith("create") for event in result.lifecycles))
+
+    def test_register_versions_writes_visible_parent_child_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = DocumentRegistry(root_dir=os.path.join(tmpdir, ".runtime", "document_registry"))
+            document = self._document(doc_id="doc-1", title="CBT Paper")
+            support = self._support(
+                support_id="sup-1",
+                doc_id=document.doc_id,
+                excerpt="Build a collaborative agenda and assign practice homework.",
+            )
+            skill = self._skill(
+                skill_id="cand-1",
+                name="认知重构作业布置",
+                workflow_steps=["建立议程。", "识别自动思维。", "布置记录表作业。", "说明复盘方式。"],
+                constraints=["不要带入具体个案姓名。"],
+                support_ids=[support.support_id],
+                domain="psychology",
+                task_family="homework",
+                method_family="cbt",
+                stage="intervention",
+            )
+
+            result = self._register(
+                registry=registry,
+                documents=[document],
+                supports=[support],
+                skills=[skill],
+                metadata={
+                    "school_name": "认知行为疗法",
+                    "profile_id": "test_therapy_v2",
+                    "taxonomy_axis": "疗法",
+                },
+            )
+
+            parent_md = os.path.join(tmpdir, "认知行为疗法", "总技能", "SKILL.md")
+            children_manifest = os.path.join(
+                tmpdir,
+                "认知行为疗法",
+                "总技能",
+                "references",
+                "children_manifest.json",
+            )
+            child_md = os.path.join(
+                tmpdir,
+                "认知行为疗法",
+                "子技能",
+                "认知重构作业布置",
+                "SKILL.md",
+            )
+            evidence_md = os.path.join(
+                tmpdir,
+                "认知行为疗法",
+                "子技能",
+                "认知重构作业布置",
+                "references",
+                "evidence.md",
+            )
+            evidence_manifest = os.path.join(
+                tmpdir,
+                "认知行为疗法",
+                "子技能",
+                "认知重构作业布置",
+                "references",
+                "evidence_manifest.json",
+            )
+            library_manifest = os.path.join(tmpdir, ".runtime", "library_manifest.json")
+
+            self.assertTrue(os.path.isfile(parent_md))
+            self.assertTrue(os.path.isfile(children_manifest))
+            self.assertTrue(os.path.isfile(child_md))
+            self.assertTrue(os.path.isfile(evidence_md))
+            self.assertTrue(os.path.isfile(evidence_manifest))
+            self.assertTrue(os.path.isfile(library_manifest))
+            self.assertEqual(result.visible_tree.get("affected_schools"), ["认知行为疗法"])
+            self.assertEqual(len(list(result.staging_runs or [])), 1)
+            self.assertTrue(os.path.isdir(result.staging_runs[0]["run_dir"]))
+            self.assertTrue(
+                os.path.isfile(
+                    os.path.join(
+                        result.staging_runs[0]["run_dir"],
+                        "canonical_results.json",
+                    )
+                )
+            )
+
+            with open(children_manifest, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            self.assertEqual(payload.get("school_name"), "认知行为疗法")
+            self.assertEqual(len(list(payload.get("children") or [])), 1)
+            self.assertEqual(
+                payload["children"][0]["relative_path"],
+                "认知行为疗法/子技能/认知重构作业布置/SKILL.md",
+            )
+
+            with open(evidence_md, "r", encoding="utf-8") as f:
+                evidence_text = f.read()
+            self.assertIn("quote:", evidence_text)
+            self.assertIn("Build a collaborative agenda", evidence_text)
+
+            with open(library_manifest, "r", encoding="utf-8") as f:
+                manifest_payload = json.load(f)
+            self.assertEqual(manifest_payload.get("active_profile_id"), "test_therapy_v2")
+            self.assertEqual(manifest_payload.get("active_school_name"), "认知行为疗法")
+            self.assertEqual(manifest_payload["profiles"][0]["profile_id"], "test_therapy_v2")
+
+    def test_visible_tree_avoids_reserved_root_name_collisions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = DocumentRegistry(root_dir=os.path.join(tmpdir, ".runtime", "document_registry"))
+            document = self._document(doc_id="doc-1", title="Reserved School")
+            support = self._support(
+                support_id="sup-1",
+                doc_id=document.doc_id,
+                excerpt="Build a structured intake agenda.",
+            )
+            skill = self._skill(
+                skill_id="cand-1",
+                name="保留目录名测试技能",
+                workflow_steps=["建立议程。", "确认目标。", "说明边界。", "安排总结。"],
+                support_ids=[support.support_id],
+            )
+
+            result = self._register(
+                registry=registry,
+                documents=[document],
+                supports=[support],
+                skills=[skill],
+                metadata={"school_name": "Users"},
+            )
+
+            self.assertEqual(result.visible_tree.get("affected_schools"), ["Users-skills"])
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "Users-skills", "总技能", "SKILL.md")))
+            self.assertFalse(os.path.isfile(os.path.join(tmpdir, "Users", "总技能", "SKILL.md")))
 
 
 if __name__ == "__main__":

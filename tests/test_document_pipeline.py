@@ -6,9 +6,10 @@ import tempfile
 import unittest
 
 from autoskill import AutoSkill, AutoSkillConfig
-from AutoSkill4Doc.compiler import _identity_key_for_skill
-from AutoSkill4Doc.extractor import build_document_skill_extractor, extract_skills
+from AutoSkill4Doc.stages.compiler import _identity_key_for_skill, build_skill_compiler, compile_skills
+from AutoSkill4Doc.stages.extractor import build_document_skill_extractor, extract_skills
 from AutoSkill4Doc.extract import extract_from_doc
+from AutoSkill4Doc.models import SkillDraft, SupportRecord, SupportRelation, TextSpan, VersionState
 from AutoSkill4Doc.pipeline import build_default_document_pipeline
 from AutoSkill4Doc.prompts import OFFLINE_CHANNEL_DOC, build_offline_extract_prompt
 
@@ -257,6 +258,32 @@ class DocumentPipelineTest(unittest.TestCase):
             self.assertEqual(manifest["entities"]["skills"]["count"], 0)
             self.assertEqual(len(sdk.store.list(user_id="u1")), 0)
 
+    def test_full_build_writes_visible_parent_child_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sdk = self._build_sdk(store_path=tmpdir)
+            pipeline = build_default_document_pipeline(sdk=sdk)
+
+            result = pipeline.build(
+                user_id="u1",
+                data=_DOC_TEXT,
+                title="Intake Workflow",
+                domain="psychology",
+                metadata={
+                    "channel": "offline_extract_from_doc",
+                    "school_name": "认知行为疗法",
+                    "profile_id": "test_therapy_v2",
+                    "taxonomy_axis": "疗法",
+                },
+            )
+
+            parent_md = os.path.join(tmpdir, "认知行为疗法", "总技能", "SKILL.md")
+            child_root = os.path.join(tmpdir, "认知行为疗法", "子技能")
+            self.assertTrue(os.path.isfile(parent_md))
+            self.assertTrue(os.path.isdir(child_root))
+            self.assertTrue(result.registration.visible_tree.get("parent_paths"))
+            self.assertTrue(result.registration.visible_tree.get("child_paths"))
+            self.assertGreaterEqual(len(list(result.registration.staging_runs or [])), 1)
+
     def test_extract_from_doc_returns_stage_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             sdk = self._build_sdk(store_path=tmpdir)
@@ -272,6 +299,7 @@ class DocumentPipelineTest(unittest.TestCase):
             )
 
             self.assertEqual(result["total_documents"], 1)
+            self.assertGreaterEqual(result["total_windows"], 1)
             self.assertGreater(result["total_support_records"], 0)
             self.assertGreater(result["total_skill_drafts"], 0)
             self.assertGreater(result["total_skill_specs"], 0)
@@ -279,6 +307,26 @@ class DocumentPipelineTest(unittest.TestCase):
             self.assertTrue(result["dry_run"])
             self.assertEqual(result["skills"][0]["asset_type"], "session_skill")
             self.assertEqual(result["skills"][0]["granularity"], "session")
+
+    def test_document_build_result_dict_includes_windows_and_compiled_supports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sdk = self._build_sdk(store_path=tmpdir)
+            pipeline = build_default_document_pipeline(sdk=sdk)
+
+            result = pipeline.build(
+                user_id="u1",
+                data=_DOC_TEXT,
+                title="Intake Workflow",
+                domain="psychology",
+                metadata={"channel": "offline_extract_from_doc"},
+                dry_run=True,
+            )
+            payload = result.to_dict()
+
+            self.assertGreaterEqual(payload["windows"], 1)
+            self.assertEqual(payload["support_records"], len(result.compiled.support_records))
+            self.assertEqual(payload["skill_specs"], len(result.compiled.skill_specs))
+            self.assertIn("staging_runs", payload)
 
     def test_document_prompt_requires_multi_asset_single_goal_extraction(self) -> None:
         prompt = build_offline_extract_prompt(channel=OFFLINE_CHANNEL_DOC, max_candidates=3)
@@ -336,6 +384,40 @@ Clarify the client's immediate concern and summarize the goal for this session.
             self.assertEqual(len(ingest_result.documents), 1)
             self.assertEqual(len(extracted.support_records), 1)
             self.assertEqual(extracted.support_records[0].metadata.get("extraction_unit"), "section")
+
+    def test_pipeline_extract_uses_ingest_windows_when_provided(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sdk = self._build_sdk(store_path=tmpdir)
+            pipeline = build_default_document_pipeline(sdk=sdk)
+            text = """
+# Intake
+Build rapport before deeper intervention.
+
+Clarify the client's immediate concern and summarize the goal for this session.
+""".strip()
+
+            ingest_result = pipeline.ingest_document(
+                data=text,
+                title="Window Driven Intake",
+                domain="psychology",
+                dry_run=True,
+            )
+            extracted = pipeline.extract_skills(
+                documents=ingest_result.documents,
+                windows=ingest_result.windows,
+            )
+
+            self.assertEqual(len(ingest_result.windows), 1)
+            self.assertEqual(len(extracted.support_records), 1)
+            self.assertEqual(extracted.support_records[0].metadata.get("extraction_unit"), "window")
+            self.assertEqual(
+                extracted.support_records[0].metadata.get("window_strategy"),
+                ingest_result.windows[0].strategy,
+            )
+            self.assertEqual(
+                extracted.skill_drafts[0].metadata.get("window_id"),
+                ingest_result.windows[0].window_id,
+            )
 
     def test_long_section_falls_back_to_multiple_chunks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -512,6 +594,113 @@ Use a scaling question to help the client rate progress and define the next step
             self.assertIn(support.support_id, spec.support_ids)
             self.assertNotIn(support.support_id, spec.skill_body)
             self.assertNotIn(support.excerpt, spec.metadata.get("identity_key", ""))
+
+    def test_compile_groups_distinct_drafts_from_same_document_separately(self) -> None:
+        def _compile_response(*, system: str | None, user: str, temperature: float = 0.0, mode: str = "default") -> str:
+            _ = system, temperature
+            if mode != "document_compile":
+                return json.dumps({"skills": []}, ensure_ascii=False)
+            payload = json.loads(user)
+            drafts = list(payload.get("drafts") or [])
+            first = drafts[0]
+            return json.dumps(
+                {
+                    "skills": [
+                        {
+                            "name": first.get("name") or "skill",
+                            "description": first.get("description") or "desc",
+                            "prompt": first.get("metadata", {}).get("prompt") or "# Goal\nPrompt",
+                            "asset_type": first.get("asset_type") or "session_skill",
+                            "granularity": first.get("granularity") or "session",
+                            "objective": first.get("objective") or first.get("description") or "objective",
+                            "domain": first.get("domain") or "psychology",
+                            "task_family": first.get("task_family") or "intake",
+                            "method_family": first.get("method_family") or "structured_interview",
+                            "stage": first.get("stage") or "intake",
+                            "workflow_steps": first.get("workflow_steps") or [],
+                            "constraints": first.get("constraints") or [],
+                            "cautions": first.get("cautions") or [],
+                            "output_contract": first.get("output_contract") or [],
+                            "support_ids": first.get("support_ids") or [],
+                            "source_draft_ids": [first.get("draft_id")],
+                            "confidence": 0.9,
+                            "risk_class": "low",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+
+        support_a = SupportRecord(
+            support_id="sup-a",
+            doc_id="doc-1",
+            source_file="/tmp/doc-1.md",
+            section="Session 1",
+            span=TextSpan(start=0, end=20),
+            excerpt="Build rapport first.",
+            relation_type=SupportRelation.SUPPORT,
+            confidence=0.9,
+        )
+        support_b = SupportRecord(
+            support_id="sup-b",
+            doc_id="doc-1",
+            source_file="/tmp/doc-1.md",
+            section="Session 2",
+            span=TextSpan(start=21, end=45),
+            excerpt="Review homework next.",
+            relation_type=SupportRelation.SUPPORT,
+            confidence=0.9,
+        )
+        draft_a = SkillDraft(
+            draft_id="draft-a",
+            doc_id="doc-1",
+            name="rapport building / intake",
+            description="Build rapport before deeper intervention.",
+            asset_type="session_skill",
+            granularity="session",
+            objective="Establish rapport before deeper intervention.",
+            domain="psychology",
+            task_family="intake",
+            method_family="structured_interview",
+            stage="intake",
+            workflow_steps=["Build rapport first."],
+            constraints=["Do not rush disclosure."],
+            support_ids=["sup-a"],
+            metadata={"prompt": "# Goal\nBuild rapport."},
+        )
+        draft_b = SkillDraft(
+            draft_id="draft-b",
+            doc_id="doc-1",
+            name="homework review / session opening",
+            description="Review homework before setting the agenda.",
+            asset_type="session_skill",
+            granularity="session",
+            objective="Review homework before setting the agenda.",
+            domain="psychology",
+            task_family="homework_review",
+            method_family="structured_interview",
+            stage="follow_up",
+            workflow_steps=["Review homework first."],
+            constraints=["Check barriers before assigning more work."],
+            support_ids=["sup-b"],
+            metadata={"prompt": "# Goal\nReview homework."},
+        )
+
+        compiled = compile_skills(
+            skill_drafts=[draft_a, draft_b],
+            support_records=[support_a, support_b],
+            compiler=build_skill_compiler(
+                "llm",
+                llm_config={"provider": "mock", "response": _compile_response},
+            ),
+            target_state=VersionState.DRAFT,
+        )
+
+        self.assertEqual(len(compiled.skill_specs), 2)
+        self.assertEqual(
+            {spec.name for spec in compiled.skill_specs},
+            {"rapport building / intake", "homework review / session opening"},
+        )
 
     def test_changed_document_bumps_registry_versions(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
