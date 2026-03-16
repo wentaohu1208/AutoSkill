@@ -11,6 +11,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from autoskill import AutoSkill, AutoSkillConfig
+from autoskill.utils.skill_resources import extract_resource_paths_from_files
 from .file_loader import data_to_text_unit, load_file_units
 from .prompt_runtime import activate_offline_prompt_runtime
 from ..provider_config import (
@@ -157,6 +158,7 @@ def _skill_to_plain_dict(skill: Any) -> Dict[str, Any]:
     """Run skill to plain dict."""
     try:
         examples = []
+        files = dict(getattr(skill, "files", {}) or {})
         for e in list(getattr(skill, "examples", []) or []):
             examples.append(
                 {
@@ -169,10 +171,14 @@ def _skill_to_plain_dict(skill: Any) -> Dict[str, Any]:
             "id": str(getattr(skill, "id", "") or ""),
             "name": str(getattr(skill, "name", "") or ""),
             "description": str(getattr(skill, "description", "") or ""),
+            "instructions": str(getattr(skill, "instructions", "") or ""),
+            "prompt": str(getattr(skill, "instructions", "") or ""),
             "version": str(getattr(skill, "version", "") or ""),
             "triggers": list(getattr(skill, "triggers", []) or []),
             "tags": list(getattr(skill, "tags", []) or []),
             "examples": examples,
+            "resource_paths": extract_resource_paths_from_files(files, max_items=32),
+            "files": {str(k): str(v) for k, v in files.items() if str(k or "").strip() and str(k) != "SKILL.md"},
         }
     except Exception:
         return {"id": "", "name": "", "description": "", "version": ""}

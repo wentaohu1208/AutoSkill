@@ -11,8 +11,10 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from typing import Any, Callable, Dict, List, Optional
 
 from autoskill import AutoSkill, AutoSkillConfig
+from autoskill.utils.skill_resources import extract_resource_paths_from_files
 from .file_loader import load_openai_units
 from .prompt_runtime import activate_offline_prompt_runtime
+from .skill_normalizer import extract_examples_from_instruction, normalize_instruction_body
 from .requirement_memory import (
     RequirementStatsStore,
     extract_user_requirements,
@@ -277,6 +279,7 @@ def _prepare_conversation_unit(
         max_candidates=1,
         retrieved_reference=None,
     )
+    candidates = _normalize_candidates(candidates)
     return {
         "index": int(index),
         "status": "ready",
@@ -305,6 +308,31 @@ def _collect_user_questions(messages: List[Dict[str, str]]) -> str:
     return "\n\n".join(parts)
 
 
+def _normalize_candidates(candidates: List[Any]) -> List[Any]:
+    """Normalizes offline extracted candidate bodies without touching core autoskill code."""
+    out: List[Any] = []
+    for cand in list(candidates or []):
+        try:
+            name = str(getattr(cand, "name", "") or "").strip()
+            desc = str(getattr(cand, "description", "") or "").strip()
+            raw_instr = str(getattr(cand, "instructions", "") or "").strip()
+            examples = extract_examples_from_instruction(raw_instr)
+            instr = normalize_instruction_body(
+                raw_instr,
+                skill_name=name,
+                skill_description=desc or name,
+            )
+            if not instr:
+                continue
+            setattr(cand, "instructions", instr)
+            if examples:
+                setattr(cand, "examples", examples)
+            out.append(cand)
+        except Exception:
+            out.append(cand)
+    return out
+
+
 def _format_full_conversation(messages: List[Dict[str, str]]) -> str:
     """Run format full conversation."""
     out: List[str] = []
@@ -321,6 +349,7 @@ def _skill_to_plain_dict(skill: Any) -> Dict[str, Any]:
     """Run skill to plain dict."""
     try:
         examples = []
+        files = dict(getattr(skill, "files", {}) or {})
         for e in list(getattr(skill, "examples", []) or []):
             examples.append(
                 {
@@ -333,10 +362,14 @@ def _skill_to_plain_dict(skill: Any) -> Dict[str, Any]:
             "id": str(getattr(skill, "id", "") or ""),
             "name": str(getattr(skill, "name", "") or ""),
             "description": str(getattr(skill, "description", "") or ""),
+            "instructions": str(getattr(skill, "instructions", "") or ""),
+            "prompt": str(getattr(skill, "instructions", "") or ""),
             "version": str(getattr(skill, "version", "") or ""),
             "triggers": list(getattr(skill, "triggers", []) or []),
             "tags": list(getattr(skill, "tags", []) or []),
             "examples": examples,
+            "resource_paths": extract_resource_paths_from_files(files, max_items=32),
+            "files": {str(k): str(v) for k, v in files.items() if str(k or "").strip() and str(k) != "SKILL.md"},
         }
     except Exception:
         return {"id": "", "name": "", "description": "", "version": ""}
