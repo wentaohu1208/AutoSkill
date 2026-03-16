@@ -1279,6 +1279,108 @@ class DocumentVersioningTest(unittest.TestCase):
             )
             self.assertEqual({"cand-session", "cand-micro"}, {skill.id for skill in stored})
 
+    def test_store_sync_does_not_overwrite_same_content_across_different_families(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sdk = AutoSkill(
+                AutoSkillConfig(
+                    llm={"provider": "mock"},
+                    embeddings={"provider": "hashing", "dims": 64},
+                    store={"provider": "local", "path": tmpdir},
+                    maintenance_strategy="heuristic",
+                )
+            )
+            registry = DocumentRegistry(root_dir=os.path.join(tmpdir, ".runtime", "document_registry"))
+            document = self._document(doc_id="doc-1", title="Family Scoped Skill")
+            support_cbt = self._support(
+                support_id="sup-cbt",
+                doc_id=document.doc_id,
+                excerpt="Use agenda-based CBT intake scaffolding.",
+            )
+            support_pd = self._support(
+                support_id="sup-pd",
+                doc_id=document.doc_id,
+                excerpt="Use psychodynamic intake framing and alliance exploration.",
+            )
+            cbt_skill = self._skill(
+                skill_id="cbt-intake-session",
+                name="首次咨询结构化摄入会谈流程",
+                asset_type="session_skill",
+                granularity="session",
+                asset_node_id="session_framework",
+                objective="Run a structured first-session intake.",
+                workflow_steps=["建立议程。", "明确问题。", "风险检查。", "总结安排。"],
+                support_ids=[support_cbt.support_id],
+            )
+            cbt_skill.metadata.update(
+                {
+                    "taxonomy_id": "psychology",
+                    "profile_id": "psychology::认知行为疗法",
+                    "family_id": "cbt",
+                    "family_name": "认知行为疗法",
+                }
+            )
+            pd_skill = self._skill(
+                skill_id="psychodynamic-intake-session",
+                name="首次咨询结构化摄入会谈流程",
+                asset_type="session_skill",
+                granularity="session",
+                asset_node_id="session_framework",
+                objective="Run a structured first-session intake.",
+                workflow_steps=["建立关系。", "探索来访动机。", "澄清冲突。", "总结安排。"],
+                support_ids=[support_pd.support_id],
+            )
+            pd_skill.metadata.update(
+                {
+                    "taxonomy_id": "psychology",
+                    "profile_id": "psychology::Psychodynamic（心理动力学）",
+                    "family_id": "psychodynamic",
+                    "family_name": "Psychodynamic（心理动力学）",
+                }
+            )
+
+            register_versions(
+                registry=registry,
+                documents=[document],
+                support_records=[support_cbt],
+                skill_specs=[cbt_skill],
+                sdk=sdk,
+                llm=self._llm(),
+                user_id="docskill",
+                metadata={
+                    "channel": "offline_extract_from_doc",
+                    "family_name": "认知行为疗法",
+                    "profile_id": "psychology::认知行为疗法",
+                    "taxonomy_id": "psychology",
+                },
+                dry_run=False,
+                target_state=VersionState.ACTIVE,
+            )
+            register_versions(
+                registry=registry,
+                documents=[document],
+                support_records=[support_pd],
+                skill_specs=[pd_skill],
+                sdk=sdk,
+                llm=self._llm(),
+                user_id="docskill",
+                metadata={
+                    "channel": "offline_extract_from_doc",
+                    "family_name": "Psychodynamic（心理动力学）",
+                    "profile_id": "psychology::Psychodynamic（心理动力学）",
+                    "taxonomy_id": "psychology",
+                },
+                dry_run=False,
+                target_state=VersionState.ACTIVE,
+            )
+
+            stored = sorted(sdk.store.list(user_id="docskill"), key=lambda item: item.id)
+            self.assertEqual(2, len(stored))
+            self.assertEqual(
+                {"认知行为疗法", "Psychodynamic（心理动力学）"},
+                {str(skill.metadata.get("family_name") or "") for skill in stored},
+            )
+            self.assertEqual(2, len({skill.id for skill in stored}))
+
 
 if __name__ == "__main__":
     unittest.main()

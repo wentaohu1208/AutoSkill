@@ -37,11 +37,17 @@ def _identity_key_for_skill(
     method_family: str,
     stage: str,
     name: str,
+    taxonomy_id: str = "",
+    profile_id: str = "",
+    family_scope: str = "",
 ) -> str:
     """Builds a stable identity key for one compiled skill."""
 
     return "|".join(
         [
+            normalize_text(taxonomy_id, lower=True),
+            normalize_text(profile_id, lower=True),
+            normalize_text(family_scope, lower=True),
             normalize_text(asset_type, lower=True),
             normalize_text(granularity, lower=True),
             normalize_text(asset_node_id, lower=True),
@@ -168,6 +174,8 @@ class SkillCompilationResult:
 def _group_key_for_draft(draft: SkillDraft) -> str:
     """Builds a compile grouping key that keeps distinct skills separate within one document."""
 
+    draft_metadata = dict(draft.metadata or {})
+    family_scope = str(draft_metadata.get("family_id") or draft_metadata.get("family_name") or draft_metadata.get("school_name") or "").strip()
     identity_key = _identity_key_for_skill(
         asset_type=draft.asset_type,
         granularity=draft.granularity,
@@ -178,6 +186,9 @@ def _group_key_for_draft(draft: SkillDraft) -> str:
         method_family=draft.method_family,
         stage=draft.stage,
         name=draft.name,
+        taxonomy_id=str(draft_metadata.get("taxonomy_id") or "").strip(),
+        profile_id=str(draft_metadata.get("profile_id") or "").strip(),
+        family_scope=family_scope,
     )
     return f"{str(draft.doc_id or '').strip()}::{identity_key}"
 
@@ -391,6 +402,7 @@ class LLMSkillCompiler:
             ),
             {},
         )
+        source_family_scope = source_family_ids[0] if source_family_ids else (source_family_names[0] if source_family_names else "")
         for raw_item in raw_skills:
             item = maybe_json_dict(raw_item)
             name = str(item.get("name") or "").strip()
@@ -541,6 +553,9 @@ class LLMSkillCompiler:
                 method_family=spec.method_family,
                 stage=spec.stage,
                 name=spec.name,
+                taxonomy_id=source_taxonomy_ids[0] if source_taxonomy_ids else "",
+                profile_id=source_profile_ids[0] if source_profile_ids else "",
+                family_scope=source_family_scope,
             )
             spec.skill_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"autoskill-skill:{identity_key}"))
             spec.metadata["identity_key"] = identity_key

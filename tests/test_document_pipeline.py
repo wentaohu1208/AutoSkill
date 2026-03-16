@@ -516,6 +516,38 @@ class DocumentPipelineTest(unittest.TestCase):
 
         self.assertNotEqual(macro, micro)
 
+    def test_identity_key_distinguishes_same_skill_across_families(self) -> None:
+        cbt = _identity_key_for_skill(
+            asset_type="session_skill",
+            granularity="session",
+            asset_node_id="session_framework",
+            objective="Run a structured first-session intake.",
+            domain="psychology",
+            task_family="assessment",
+            method_family="cbt",
+            stage="intake",
+            name="首次咨询结构化摄入会谈流程",
+            taxonomy_id="psychology",
+            profile_id="psychology::认知行为疗法",
+            family_scope="cbt",
+        )
+        psychodynamic = _identity_key_for_skill(
+            asset_type="session_skill",
+            granularity="session",
+            asset_node_id="session_framework",
+            objective="Run a structured first-session intake.",
+            domain="psychology",
+            task_family="assessment",
+            method_family="cbt",
+            stage="intake",
+            name="首次咨询结构化摄入会谈流程",
+            taxonomy_id="psychology",
+            profile_id="psychology::Psychodynamic（心理动力学）",
+            family_scope="psychodynamic",
+        )
+
+        self.assertNotEqual(cbt, psychodynamic)
+
     def test_short_section_is_used_as_default_extraction_unit(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             sdk = self._build_sdk(store_path=tmpdir)
@@ -538,6 +570,69 @@ Clarify the client's immediate concern and summarize the goal for this session.
             self.assertEqual(len(ingest_result.documents), 1)
             self.assertEqual(len(extracted.support_records), 1)
             self.assertEqual(extracted.support_records[0].metadata.get("extraction_unit"), "section")
+
+    def test_compile_assigns_different_skill_ids_for_same_content_in_different_families(self) -> None:
+        compiler = build_skill_compiler(llm_config={"provider": "mock", "response": _document_llm_response})
+        support = SupportRecord(
+            support_id="sup-1",
+            doc_id="doc-1",
+            source_file="/tmp/doc-1.md",
+            section="Method",
+            span=TextSpan(start=0, end=32),
+            excerpt="Build rapport first and clarify the goal.",
+            relation_type=SupportRelation.SUPPORT,
+            confidence=0.9,
+        )
+        common = {
+            "name": "首次咨询结构化摄入会谈流程",
+            "description": "A reusable intake workflow.",
+            "asset_type": "session_skill",
+            "granularity": "session",
+            "asset_node_id": "session_framework",
+            "asset_path": "family_root/treatment_framework/session_framework",
+            "asset_level": 2,
+            "visible_role": "parent",
+            "objective": "Run a structured first-session intake.",
+            "domain": "psychology",
+            "task_family": "assessment",
+            "method_family": "cbt",
+            "stage": "intake",
+            "workflow_steps": ["建立议程。", "明确问题。", "风险检查。", "总结安排。"],
+            "support_ids": ["sup-1"],
+            "confidence": 0.9,
+        }
+        draft_a = SkillDraft(
+            draft_id="draft-a",
+            doc_id="doc-1",
+            metadata={
+                "taxonomy_id": "psychology",
+                "profile_id": "psychology::认知行为疗法",
+                "family_id": "cbt",
+                "family_name": "认知行为疗法",
+            },
+            **common,
+        )
+        draft_b = SkillDraft(
+            draft_id="draft-b",
+            doc_id="doc-1",
+            metadata={
+                "taxonomy_id": "psychology",
+                "profile_id": "psychology::Psychodynamic（心理动力学）",
+                "family_id": "psychodynamic",
+                "family_name": "Psychodynamic（心理动力学）",
+            },
+            **common,
+        )
+
+        compiled = compile_skills(
+            skill_drafts=[draft_a, draft_b],
+            support_records=[support],
+            compiler=compiler,
+            target_state=VersionState.ACTIVE,
+        )
+
+        self.assertEqual(2, len(compiled.skill_specs))
+        self.assertEqual(2, len({spec.skill_id for spec in compiled.skill_specs}))
 
     def test_pipeline_extract_uses_ingest_windows_when_provided(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
