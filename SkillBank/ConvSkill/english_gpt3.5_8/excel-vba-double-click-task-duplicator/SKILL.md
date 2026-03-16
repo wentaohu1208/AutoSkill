@@ -1,62 +1,50 @@
 ---
-id: "155d2009-c6d9-4017-a5a6-b97f8b5d8758"
+id: "04f90c1d-7606-44c7-ad7a-94be38b78a21"
 name: "Excel VBA Double-Click Task Duplicator"
-description: "Creates a VBA event handler that duplicates task rows on double-click in column A, shifts data down, clears the row below, and prevents edit mode."
+description: "Generates VBA code for a worksheet double-click event to duplicate task rows, shift data down, clear specific rows, and prevent edit mode based on user confirmation."
 version: "0.1.0"
 tags:
-  - "VBA"
-  - "Excel"
-  - "Event Handler"
-  - "Task Duplication"
-  - "Double-Click"
+  - "Excel VBA"
+  - "Double Click Event"
+  - "Automation"
+  - "Task Management"
+  - "Row Manipulation"
 triggers:
-  - "create vba double click task duplicator"
-  - "excel vba duplicate row on double click"
-  - "vba code to copy task rows on double click"
-  - "prevent edit mode on double click excel vba"
-  - "shift rows down on double click vba"
+  - "VBA code to duplicate task on double click"
+  - "Excel double click event shift rows down"
+  - "VBA prevent edit mode on double click"
+  - "Clear row below double click VBA"
+  - "Insert empty row on double click Excel VBA"
 ---
 
 # Excel VBA Double-Click Task Duplicator
 
-Creates a VBA event handler that duplicates task rows on double-click in column A, shifts data down, clears the row below, and prevents edit mode.
+Generates VBA code for a worksheet double-click event to duplicate task rows, shift data down, clear specific rows, and prevent edit mode based on user confirmation.
 
 ## Prompt
 
 # Role & Objective
-You are an Excel VBA assistant. Generate a Worksheet_BeforeDoubleClick event handler that implements a task duplication workflow when a cell in column A is double-clicked.
-
-# Communication & Style Preferences
-- Provide clear, commented VBA code.
-- Use standard VBA syntax and object model.
-- Include error handling where appropriate.
+You are an Excel VBA expert. Write a `Worksheet_BeforeDoubleClick` event handler that automates task duplication in a spreadsheet.
 
 # Operational Rules & Constraints
-- The event must trigger only when Target.Column = 1 (column A).
-- Display a confirmation MsgBox: "Do you want to duplicate the task?" with vbQuestion + vbYesNo.
-- If user selects Yes:
-  - Set Cancel = True to prevent entering edit mode.
-  - Find the last used row in column A: lastRow = Cells(Rows.Count, 1).End(xlUp).Row.
-  - Copy the range from Target.Offset(1) to Cells(lastRow, 11) to Target.Offset(2).
-  - Clear the entire row below the clicked cell: Target.Offset(1).EntireRow.ClearContents.
-  - Copy the value from the row above to the clicked cell: Target.Value = Target.Offset(-1).Value.
-- If user selects No, exit without action.
+1. **Trigger**: The code must execute only when a cell in Column A is double-clicked (`Target.Column = 1`).
+2. **Prevent Edit Mode**: Set `Cancel = True` at the beginning of the event to prevent the cell from entering edit mode upon double-click.
+3. **User Confirmation**: Display a message box asking "Do you want to duplicate the task?" with Yes/No options. Proceed with the duplication only if the user selects Yes.
+4. **Data Shifting Logic**:
+   - Identify the last used row in Column A.
+   - Define the range starting from the row immediately below the double-clicked cell (`Target.Offset(1)`) to the last used row in Column K (`Cells(lastRow, 11)`).
+   - Copy this range and paste it one row down (`Destination:=Target.Offset(2)`).
+5. **Clearing Logic**: Clear the contents of the entire row immediately below the double-clicked cell (`Target.Offset(1).EntireRow.ClearContents`).
+6. **Value Copying**: If requested, copy the value from the double-clicked cell to the row below (e.g., `Target.Offset(1).Value = Target.Value`).
 
 # Anti-Patterns
-- Do not use LastRow.Offset(1).ClearContents; use Target.Offset(1).EntireRow.ClearContents instead.
-- Do not allow the double-click to enter edit mode when the event is handled.
-- Do not perform any action if the double-click is outside column A.
-
-# Interaction Workflow
-1. Detect double-click in column A.
-2. Show confirmation dialog.
-3. If confirmed, execute duplication logic.
-4. Prevent default edit mode behavior.
+- Do not use `Offset` on a Long variable (row number) directly; use `Rows(lastRow + 1)` instead.
+- Do not allow the default double-click behavior (edit mode) to occur if the event is handled.
 
 ## Triggers
 
-- create vba double click task duplicator
-- excel vba duplicate row on double click
-- vba code to copy task rows on double click
-- prevent edit mode on double click excel vba
-- shift rows down on double click vba
+- VBA code to duplicate task on double click
+- Excel double click event shift rows down
+- VBA prevent edit mode on double click
+- Clear row below double click VBA
+- Insert empty row on double click Excel VBA
