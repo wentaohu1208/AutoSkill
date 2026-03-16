@@ -2,25 +2,61 @@
 
 English | [中文](README.zh-CN.md)
 
-`autoskill.offline` provides batch/offline extraction workflows for archived data.
-It currently covers the in-package pipelines below:
+`autoskill.offline` provides batch extraction workflows for archived data. This README focuses on the `conversation` pipeline:
 
-- `conversation`: archived OpenAI-format conversations -> skills
-- `trajectory`: agent trajectories/events -> workflow skills
+- `conversation`: archived OpenAI-format conversations -> reusable user skills
 
-The document pipeline has been moved out into the standalone `AutoSkill4Doc`
-package at the repository root.
+## Conversation Pipeline
 
-## Document Pipeline Docs
+`conversation` focuses on user-stated reusable requirements. It converts each conversation into a normalized extraction message with:
 
-The document pipeline has been split into a standalone root module:
+- `Primary User Questions` as the main evidence
+- `Full Conversation` as secondary context only
 
-- [AutoSkill4Doc README](/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/AutoSkill4Doc/README.md)
-- [AutoSkill4Doc README.zh-CN](/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/AutoSkill4Doc/README.zh-CN.md)
+Assistant replies are reference-only and should not become skill requirements. The pipeline also maintains offline requirement memory per user:
 
-Legacy note:
-- `autoskill/offline/document/` has been removed.
-- document extraction is now standalone in `AutoSkill4Doc` and is no longer routed through `autoskill.offline`.
+- atomic requirement extraction
+- requirement canonicalization
+- same-requirement matching inside one skill lineage
+- mention counting across updates
+- keep/drop decisions for low-frequency one-off constraints
+
+Requirement stats are stored locally under:
+
+```text
+<store_root>/index/offline_requirement_stats_<user_id>.json
+```
+
+## Input Expectations
+
+Conversation input:
+
+- a single `.json` or `.jsonl` file in OpenAI-style message format
+- or a directory containing such files
+- a single JSON file may contain one conversation or multiple conversations
+
+## Configuration
+
+The conversation pipeline reads the following environment variables when flags are omitted:
+
+```bash
+export AUTOSKILL_LLM_PROVIDER=internlm
+export AUTOSKILL_LLM_MODEL=intern-s1
+export AUTOSKILL_LLM_API_KEY=...
+
+export AUTOSKILL_EMBEDDINGS_PROVIDER=qwen
+export AUTOSKILL_EMBEDDINGS_MODEL=text-embedding-v4
+export AUTOSKILL_EMBEDDINGS_API_KEY=...
+
+export AUTOSKILL_STORE_PATH=./SkillBank
+```
+
+Common optional flags:
+
+- `--user-id`: target user namespace
+- `--hint`: extra extraction hint
+- `--max-workers`: parallel extraction workers, default `50`, `0` means auto
+- `--store-path`: override local SkillBank path
 
 ## CLI Usage
 
@@ -28,34 +64,49 @@ Conversation:
 
 ```bash
 python3 -m autoskill.offline.conversation.extract \
-  --file ./conversation_logs/ \
-  --user-id u1
+  --file ./conversation_logs \
+  --user-id u1 \
+  --max-workers 8 \
+  --max-messages-per-conversation 0
 ```
 
-Trajectory:
+Conversation with explicit providers:
 
 ```bash
-python3 -m autoskill.offline.trajectory.extract \
-  --file ./runs/ \
-  --user-id u1
+python3 -m autoskill.offline.conversation.extract \
+  --file ./conversation_logs \
+  --user-id u1 \
+  --llm-provider internlm \
+  --llm-model intern-s1 \
+  --embeddings-provider qwen \
+  --embeddings-model text-embedding-v4 \
+  --store-path ./SkillBank
 ```
 
-Document (standalone package):
+## Outputs
 
-```bash
-python3 -m AutoSkill4Doc llm-extract \
-  --file ./paper.md \
-  --domain psychology \
-  --domain-type psychology \
-  --family-name "认知行为疗法" \
-  --dry-run
-```
+Conversation CLI prints:
 
-Document (installed script):
+- per-conversation progress
+- extracted skill names
+- aggregated counts: `conversations / processed / failed / upserted`
+- requirement stats summary path
 
-```bash
-autoskill4doc llm-extract --file ./paper.md --family-name "认知行为疗法" --json
-```
+Concurrency note:
+
+- candidate extraction runs in parallel across conversations
+- merge / version update / local persistence still run serially in input order
+- this avoids race conditions when multiple conversations update the same skill lineage
+
+The returned skill summaries contain fields such as:
+
+- `id`
+- `name`
+- `description`
+- `version`
+- `triggers`
+- `tags`
+- `examples`
 
 ## Package Layout
 
@@ -63,37 +114,12 @@ autoskill4doc llm-extract --file ./paper.md --family-name "认知行为疗法" -
 autoskill/offline/
   __init__.py
   provider_config.py
+  README.md
+  README.zh-CN.md
   conversation/
-  trajectory/
-
-AutoSkill4Doc/
-  __init__.py
-  __main__.py
-  extract.py
-  pipeline.py
-  models.py
-  prompts.py
-  taxonomy.py
-  family_resolver.py
-  core/
-    config.py
-    provider_config.py
-    common.py
-  document/
+    extract.py
     file_loader.py
-    windowing.py
-  stages/
-    diag.py
-    extractor.py
-    compiler.py
-    hierarchy.py
-    merge.py
-    migrate.py
-  store/
-    intermediate.py
-    layout.py
-    staging.py
-    versioning.py
-    registry.py
-    visible_tree.py
+    prompt_runtime.py
+    prompts.py
+    requirement_memory.py
 ```

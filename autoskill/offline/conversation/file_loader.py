@@ -2,7 +2,7 @@
 OpenAI-format conversation loader for offline conversation extraction.
 
 This module is source-isolated under `offline/conversation` so conversation
-pipelines can evolve independently from document/trajectory pipelines.
+pipelines can evolve independently from trajectory pipelines.
 """
 
 from __future__ import annotations

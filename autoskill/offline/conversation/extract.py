@@ -5,12 +5,22 @@ Offline conversation extraction from OpenAI-format datasets.
 from __future__ import annotations
 
 import argparse
+import copy
 import os
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from typing import Any, Callable, Dict, List, Optional
 
 from autoskill import AutoSkill, AutoSkillConfig
 from .file_loader import load_openai_units
 from .prompt_runtime import activate_offline_prompt_runtime
+from .requirement_memory import (
+    RequirementStatsStore,
+    extract_user_requirements,
+    infer_requirement_llm,
+    refine_candidate_by_requirement_policy,
+    requirement_stats_path,
+    resolve_lineage_key,
+)
 from ..provider_config import (
     build_embeddings_config as _build_provider_embeddings_config,
     build_llm_config as _build_provider_llm_config,
@@ -28,6 +38,7 @@ def extract_from_conversation(
     hint: Optional[str] = None,
     continue_on_error: bool = True,
     max_messages_per_conversation: int = 0,
+    max_workers: int = 0,
     progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """
@@ -58,78 +69,147 @@ def extract_from_conversation(
     failed = 0
     errors: List[Dict[str, Any]] = []
     upserted_by_id: Dict[str, Any] = {}
+    req_llm = infer_requirement_llm(sdk)
+    req_stats = RequirementStatsStore(
+        path=requirement_stats_path(sdk=sdk, user_id=user),
+        user_id=user,
+    )
+    worker_count = _resolve_max_workers(max_workers=max_workers, total_units=len(units))
+    unit_infos = [_unit_info(unit=unit, index=idx) for idx, unit in enumerate(units)]
 
     with activate_offline_prompt_runtime(sdk=sdk, channel="offline_extract_from_conversation"):
-        for idx, unit in enumerate(units):
-            unit_messages = list(unit.get("messages") or [])
-            if not unit_messages:
-                failed += 1
-                errors.append({"index": idx, "error": "empty openai messages"})
-                continue
-            window = list(unit_messages[-limit_msgs:]) if limit_msgs > 0 else list(unit_messages)
-            user_questions = _collect_user_questions(window)
-            full_context = _format_full_conversation(window)
-            msg = _build_conversation_message(
-                title=str(unit.get("title") or "").strip() or f"conversation_{idx + 1}",
-                user_questions=user_questions,
-                full_conversation=full_context,
-            )
-            window = [{"role": "user", "content": msg}]
-            if limit_msgs > 0:
-                window = list(window[-limit_msgs:])
-            if not window:
-                failed += 1
-                errors.append({"index": idx, "error": "empty conversation after normalization"})
-                continue
-            md = dict(base_md)
-            md["import_index"] = int(idx)
-            unit_source_file = str(unit.get("source_file") or "").strip()
-            md["conversation_index"] = int(unit.get("conversation_index", 0))
-            unit_title = str(unit.get("title") or "").strip() or f"conversation_{idx + 1}"
-            file_name = os.path.basename(unit_source_file) if unit_source_file else unit_title
-            if unit_source_file:
-                md["source_file"] = unit_source_file
-            try:
-                updated = sdk.ingest(
-                    user_id=user,
-                    messages=window,
-                    events=None,
-                    metadata=md,
-                    hint=(str(hint).strip() or None),
-                )
-                processed += 1
-                for s in (updated or []):
-                    sid = str(getattr(s, "id", "") or "")
-                    if sid:
-                        upserted_by_id[sid] = s
-                if progress_callback is not None:
-                    progress_callback(
-                        {
-                            "index": int(idx),
-                            "total": int(len(units)),
-                            "file_name": file_name,
-                            "file_path": unit_source_file or None,
-                            "status": "ok",
-                            "skills": _skills_compact_list(updated),
-                        }
+        # Parallelize LLM-bound extraction work, but keep apply/merge serial and ordered.
+        # This preserves deterministic merge/version behavior for the local skill bank.
+        prepared_by_index: Dict[int, Dict[str, Any]] = {}
+        next_apply_idx = 0
+        future_map: Dict[Future, int] = {}
+        with ThreadPoolExecutor(
+            max_workers=worker_count,
+            thread_name_prefix="autoskill-offline-conv",
+        ) as pool:
+            next_submit_idx = 0
+            while next_submit_idx < len(units) and len(future_map) < worker_count:
+                future_map[
+                    pool.submit(
+                        _prepare_conversation_unit,
+                        sdk=sdk,
+                        user_id=user,
+                        unit=units[next_submit_idx],
+                        index=next_submit_idx,
+                        base_md=base_md,
+                        limit_msgs=limit_msgs,
+                        hint=hint,
+                        req_llm=req_llm,
                     )
-            except Exception as e:
-                failed += 1
-                errors.append({"index": idx, "error": str(e)})
-                if progress_callback is not None:
-                    progress_callback(
-                        {
-                            "index": int(idx),
-                            "total": int(len(units)),
-                            "file_name": file_name,
-                            "file_path": unit_source_file or None,
+                ] = next_submit_idx
+                next_submit_idx += 1
+
+            while future_map:
+                done, _pending = wait(set(future_map.keys()), return_when=FIRST_COMPLETED)
+                for fut in done:
+                    idx = int(future_map.pop(fut))
+                    if next_submit_idx < len(units):
+                        future_map[
+                            pool.submit(
+                                _prepare_conversation_unit,
+                                sdk=sdk,
+                                user_id=user,
+                                unit=units[next_submit_idx],
+                                index=next_submit_idx,
+                                base_md=base_md,
+                                limit_msgs=limit_msgs,
+                                hint=hint,
+                                req_llm=req_llm,
+                            )
+                        ] = next_submit_idx
+                        next_submit_idx += 1
+                    info = unit_infos[idx]
+                    try:
+                        prepared = fut.result()
+                    except Exception as e:
+                        prepared = {
+                            "index": idx,
                             "status": "error",
                             "error": str(e),
-                            "skills": [],
+                            "file_name": info["file_name"],
+                            "file_path": info["file_path"],
                         }
-                    )
-                if not continue_on_error:
-                    raise
+                    prepared_by_index[idx] = prepared
+
+                while next_apply_idx in prepared_by_index:
+                    item = prepared_by_index.pop(next_apply_idx)
+                    info2 = unit_infos[next_apply_idx]
+                    next_apply_idx += 1
+                    if str(item.get("status") or "") == "error":
+                        failed += 1
+                        errors.append({"index": int(item.get("index", info2["index"])), "error": str(item.get("error") or "")})
+                        if progress_callback is not None:
+                            progress_callback(
+                                {
+                                    "index": int(item.get("index", info2["index"])),
+                                    "total": int(len(units)),
+                                    "file_name": str(item.get("file_name") or info2["file_name"]),
+                                    "file_path": item.get("file_path") or info2["file_path"],
+                                    "status": "error",
+                                    "error": str(item.get("error") or "unknown error"),
+                                    "skills": [],
+                                }
+                            )
+                        if not continue_on_error:
+                            raise RuntimeError(str(item.get("error") or "offline conversation extraction failed"))
+                        continue
+
+                    idx2 = int(item["index"])
+                    try:
+                        candidate_count = len(list(item.get("candidates") or []))
+                        updated = _apply_candidates_with_requirement_policy(
+                            sdk=sdk,
+                            user_id=user,
+                            metadata=dict(item.get("metadata") or {}),
+                            candidates=list(item.get("candidates") or []),
+                            requirements=list(item.get("requirements") or []),
+                            llm=req_llm,
+                            req_stats=req_stats,
+                        )
+                        processed += 1
+                        for s in (updated or []):
+                            sid = str(getattr(s, "id", "") or "")
+                            if sid:
+                                upserted_by_id[sid] = s
+                        if progress_callback is not None:
+                            progress_callback(
+                                {
+                                        "index": idx2,
+                                        "total": int(len(units)),
+                                        "file_name": str(item.get("file_name") or info2["file_name"]),
+                                        "file_path": item.get("file_path") or info2["file_path"],
+                                        "status": ("ok" if updated else "no_skill"),
+                                        "candidate_count": int(candidate_count),
+                                        "skills": _skills_compact_list(updated),
+                                    }
+                                )
+                    except Exception as e:
+                        failed += 1
+                        errors.append({"index": idx2, "error": str(e)})
+                        if progress_callback is not None:
+                            progress_callback(
+                                {
+                                    "index": idx2,
+                                    "total": int(len(units)),
+                                    "file_name": str(item.get("file_name") or info2["file_name"]),
+                                    "file_path": item.get("file_path") or info2["file_path"],
+                                    "status": "error",
+                                    "error": str(e),
+                                    "skills": [],
+                                }
+                            )
+                        if not continue_on_error:
+                            raise
+
+    try:
+        req_stats.save()
+    except Exception:
+        pass
 
     return {
         "total_conversations": len(units),
@@ -139,27 +219,74 @@ def extract_from_conversation(
         "skills": [_skill_to_plain_dict(s) for s in upserted_by_id.values()],
         "errors": errors,
         "source_file": abs_input or None,
+        "requirement_stats": req_stats.summary(),
     }
 
 
-def _build_conversation_message(
+def _unit_info(*, unit: Dict[str, Any], index: int) -> Dict[str, Any]:
+    """Run unit info."""
+    unit_source_file = str(unit.get("source_file") or "").strip()
+    unit_title = str(unit.get("title") or "").strip() or f"conversation_{index + 1}"
+    file_name = os.path.basename(unit_source_file) if unit_source_file else unit_title
+    return {
+        "index": int(index),
+        "file_name": file_name,
+        "file_path": (unit_source_file or None),
+    }
+
+
+def _prepare_conversation_unit(
     *,
-    title: str,
-    user_questions: str,
-    full_conversation: str,
-) -> str:
-    """Run build conversation message."""
-    return (
-        "Offline OpenAI-format conversation source.\n"
-        f"Title: {title}\n"
-        "Use the user questions below as the PRIMARY extraction evidence.\n"
-        "Use the full conversation below as SECONDARY context reference.\n"
-        "In the full conversation section, assistant/model replies are reference-only and not skill evidence.\n\n"
-        "Primary User Questions (main evidence):\n"
-        f"{user_questions}\n\n"
-        "Full Conversation (context reference):\n"
-        f"{full_conversation}"
+    sdk: AutoSkill,
+    user_id: str,
+    unit: Dict[str, Any],
+    index: int,
+    base_md: Dict[str, Any],
+    limit_msgs: int,
+    hint: Optional[str],
+    req_llm: Any,
+) -> Dict[str, Any]:
+    """Run prepare conversation unit."""
+    info = _unit_info(unit=unit, index=index)
+    unit_messages = list(unit.get("messages") or [])
+    if not unit_messages:
+        raise ValueError("empty openai messages")
+
+    window = list(unit_messages[-limit_msgs:]) if limit_msgs > 0 else list(unit_messages)
+    user_questions = _collect_user_questions(window)
+    if not window:
+        raise ValueError("empty conversation after normalization")
+
+    md = dict(base_md)
+    md["import_index"] = int(index)
+    md["conversation_index"] = int(unit.get("conversation_index", 0))
+    unit_source_file = str(unit.get("source_file") or "").strip()
+    if unit_source_file:
+        md["source_file"] = unit_source_file
+
+    reqs = extract_user_requirements(
+        user_questions=user_questions,
+        llm=req_llm,
+        max_items=12,
     )
+    candidates = sdk.extract_candidates(
+        user_id=user_id,
+        messages=window,
+        events=None,
+        hint=(str(hint).strip() if hint and str(hint).strip() else None),
+        max_candidates=1,
+        retrieved_reference=None,
+    )
+    return {
+        "index": int(index),
+        "status": "ready",
+        "file_name": info["file_name"],
+        "file_path": info["file_path"],
+        "metadata": md,
+        "requirements": reqs,
+        "candidates": candidates,
+        "candidate_count": int(len(candidates or [])),
+    }
 
 
 def _collect_user_questions(messages: List[Dict[str, str]]) -> str:
@@ -230,10 +357,87 @@ def _skills_compact_list(skills: Any) -> List[Dict[str, str]]:
     return out
 
 
+def _apply_candidates_with_requirement_policy(
+    *,
+    sdk: AutoSkill,
+    user_id: str,
+    metadata: Dict[str, Any],
+    candidates: List[Any],
+    requirements: List[Dict[str, str]],
+    llm: Any,
+    req_stats: RequirementStatsStore,
+) -> List[Any]:
+    """
+    Applies candidate updates with offline requirement-memory policy.
+
+    Flow:
+    1) resolve candidate lineage
+    2) update requirement counters with LLM-assisted requirement matching
+    3) refine candidate by keep/drop policy
+    4) apply maintainer update
+    """
+
+    out: List[Any] = []
+    for cand in list(candidates or []):
+        stats_before = copy.deepcopy(req_stats.data)
+        lineage_key = resolve_lineage_key(
+            sdk=sdk,
+            user_id=user_id,
+            candidate=cand,
+            min_score=0.40,
+        )
+        policy = req_stats.register_update(
+            lineage_key=lineage_key,
+            requirements=requirements,
+            llm=llm,
+        )
+        cand2 = refine_candidate_by_requirement_policy(
+            candidate=cand,
+            policy=policy.to_dict(),
+            llm=llm,
+        )
+        md2 = dict(metadata or {})
+        md2["offline_requirement_lineage"] = str(lineage_key)
+        md2["offline_requirement_policy"] = policy.to_dict()
+        try:
+            updated = sdk.maintainer.apply(
+                [cand2],
+                user_id=str(user_id or "").strip() or "u1",
+                metadata=md2,
+            )
+        except Exception:
+            req_stats.data = stats_before
+            raise
+        out.extend(list(updated or []))
+    return out
+
+
 def _env(name: str, default: str = "") -> str:
     """Run env."""
     val = os.getenv(name)
     return val if val is not None and val.strip() else default
+
+
+def _resolve_max_workers(*, max_workers: int, total_units: int) -> int:
+    """Run resolve max workers."""
+    total = max(1, int(total_units or 0))
+    raw = int(max_workers or 0)
+    if raw > 0:
+        return max(1, min(raw, total))
+    cpu = max(1, int(os.cpu_count() or 1))
+    return max(1, min(total, max(4, min(16, cpu * 2))))
+
+
+def _parse_bool_text(v: Any, default: bool) -> bool:
+    """Parse loose bool-like CLI/env text into a boolean."""
+    if v is None:
+        return bool(default)
+    s = str(v).strip().lower()
+    if s in {"1", "true", "yes", "y", "on"}:
+        return True
+    if s in {"0", "false", "no", "n", "off"}:
+        return False
+    return bool(default)
 
 
 def _build_llm_config(args: argparse.Namespace) -> Dict[str, Any]:
@@ -284,6 +488,12 @@ def _build_sdk_from_args(args: argparse.Namespace) -> AutoSkill:
             llm=llm_cfg,
             embeddings=emb_cfg,
             store=store_cfg,
+            extra={
+                "raise_on_llm_extract_error": _parse_bool_text(
+                    getattr(args, "strict_llm_errors", "1"),
+                    True,
+                )
+            },
         )
     )
 
@@ -297,6 +507,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--user-id", default="u1", help="Target user id.")
     parser.add_argument("--hint", default="", help="Optional extraction hint.")
     parser.add_argument("--max-messages-per-conversation", type=int, default=0, help="0 means no clipping.")
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=int(_env("AUTOSKILL_OFFLINE_MAX_WORKERS", "50") or 50),
+        help="Parallel extraction workers. Default is 50; 0 means auto.",
+    )
+    parser.add_argument(
+        "--strict-llm-errors",
+        default=_env("AUTOSKILL_OFFLINE_STRICT_LLM_ERRORS", "1"),
+        help="1|0. When enabled, LLM extract/repair failures surface as errors instead of silent empty skills.",
+    )
     parser.add_argument(
         "--llm-provider",
         default=_env("AUTOSKILL_LLM_PROVIDER", _pick_default_provider()),
@@ -337,6 +558,20 @@ def main() -> None:
     """Run main."""
     args = build_parser().parse_args()
     sdk = _build_sdk_from_args(args)
+    llm_provider = str(((getattr(sdk, "config", None) or AutoSkillConfig()).llm or {}).get("provider") or "mock")
+    llm_model = str(((getattr(sdk, "config", None) or AutoSkillConfig()).llm or {}).get("model") or "")
+    print(
+        f"[config] llm_provider={llm_provider} "
+        f"llm_model={llm_model or '-'} "
+        f"max_workers={int(args.max_workers or 0)} "
+        f"strict_llm_errors={_parse_bool_text(args.strict_llm_errors, True)}",
+        flush=True,
+    )
+    if str(llm_provider).strip().lower() == "mock":
+        print(
+            "[warning] mock LLM provider is active. Offline extraction will not use a real model and may produce poor or empty skill results.",
+            flush=True,
+        )
 
     def _on_progress(evt: Dict[str, Any]) -> None:
         """Run on progress."""
@@ -350,7 +585,11 @@ def main() -> None:
             return
         skills = list(evt.get("skills") or [])
         if not skills:
-            print(f"[{idx}/{total}] {fname} -> no skills", flush=True)
+            cand_n = int(evt.get("candidate_count", 0) or 0)
+            if cand_n <= 0:
+                print(f"[{idx}/{total}] {fname} -> no candidate extracted", flush=True)
+            else:
+                print(f"[{idx}/{total}] {fname} -> candidate discarded during maintenance", flush=True)
             return
         names = [str(x.get("name") or "").strip() for x in skills if str(x.get("name") or "").strip()]
         if not names:
@@ -365,6 +604,7 @@ def main() -> None:
         hint=(str(args.hint).strip() or None),
         continue_on_error=True,
         max_messages_per_conversation=int(args.max_messages_per_conversation or 0),
+        max_workers=int(args.max_workers or 0),
         metadata={"channel": "offline_extract_from_conversation"},
         progress_callback=_on_progress,
     )
@@ -384,6 +624,12 @@ def main() -> None:
         print("Errors:")
         for e in errors[:20]:
             print(f"- #{e.get('index')}: {e.get('error')}")
+    req_summary = dict(result.get("requirement_stats") or {})
+    if req_summary:
+        print(
+            f"requirement_stats: lineages={req_summary.get('lineage_count', 0)} "
+            f"path={req_summary.get('path', '')}"
+        )
 
 
 if __name__ == "__main__":

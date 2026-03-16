@@ -2,7 +2,6 @@
 Offline extraction entrypoints.
 
 This package provides batch/offline skill extraction flows for:
-- document corpora (books/papers/manuals)
 - archived conversations
 - agentic execution trajectories
 """
