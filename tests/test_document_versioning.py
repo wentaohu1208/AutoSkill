@@ -18,6 +18,7 @@ from AutoSkill4Doc.models import (
 )
 from AutoSkill4Doc.store.registry import DocumentRegistry
 from AutoSkill4Doc.store.retrieval import SkillRetrievalHit, build_document_skill_retriever
+from AutoSkill4Doc.store.layout import retrieval_cache_path
 from AutoSkill4Doc.store.visible_tree import sync_visible_skill_tree
 from AutoSkill4Doc.store.versioning import VersionManager, register_versions
 
@@ -541,6 +542,34 @@ class DocumentVersioningTest(unittest.TestCase):
         hits = retriever.search(candidate, limit=5)
 
         self.assertEqual(["match"], [hit.skill.skill_id for hit in hits])
+
+    def test_document_retriever_persists_vectors_and_bm25_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            retriever = build_document_skill_retriever(
+                embeddings_config={"provider": "hashing", "dims": 64},
+                bm25_weight=0.1,
+                base_store_root=tmpdir,
+            )
+            matching = self._skill(
+                skill_id="match",
+                name="认知重评会谈流程",
+                objective="Run an agenda-based CBT cognitive reframing session.",
+                workflow_steps=["建立议程。", "识别自动思维。", "进行重评。"],
+                support_ids=["sup-match"],
+                method_family="cbt",
+            )
+            matching.metadata["family_name"] = "认知行为疗法"
+            matching.metadata["domain_type"] = "psychology"
+            retriever.refresh([matching])
+
+            cache_path = retrieval_cache_path(tmpdir)
+            self.assertTrue(os.path.isfile(cache_path))
+            with open(cache_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            entry = dict((payload.get("entries") or {}).get("match") or {})
+            self.assertTrue(entry.get("text"))
+            self.assertTrue(entry.get("tokens"))
+            self.assertTrue(entry.get("vector"))
 
     def test_register_versions_retrieves_relevant_existing_skill_beyond_registry_slice(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

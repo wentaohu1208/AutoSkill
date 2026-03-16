@@ -172,6 +172,28 @@ def _document_llm_response(*, system: str | None, user: str, temperature: float 
     return json.dumps({"skills": []}, ensure_ascii=False)
 
 
+class CountingExtractor:
+    def __init__(self, delegate) -> None:
+        self.delegate = delegate
+        self.calls = 0
+
+    def extract(self, **kwargs):
+        self.calls += 1
+        return self.delegate.extract(**kwargs)
+
+
+class FailOnceCompiler:
+    def __init__(self, delegate) -> None:
+        self.delegate = delegate
+        self.calls = 0
+
+    def compile(self, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("compile interrupted")
+        return self.delegate.compile(**kwargs)
+
+
 class DocumentPipelineTest(unittest.TestCase):
     def _build_sdk(self, *, store_path: str) -> AutoSkill:
         return AutoSkill(
@@ -911,6 +933,34 @@ Always check for acute risk before intensive exploration.
             self.assertEqual("", support.metadata.get("parent_heading"))
             self.assertIn("3.1 自动思维识别", list(support.metadata.get("subsection_headings") or []))
             self.assertIn("3.2 证据检验", list(support.metadata.get("subsection_headings") or []))
+
+    def test_build_resumes_failed_run_without_reextracting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sdk = self._build_sdk(store_path=tmpdir)
+            pipeline = build_default_document_pipeline(sdk=sdk)
+            pipeline.document_skill_extractor = CountingExtractor(pipeline.document_skill_extractor)
+            pipeline.skill_compiler = FailOnceCompiler(pipeline.skill_compiler)
+
+            with self.assertRaises(RuntimeError):
+                pipeline.build(
+                    data=_DOC_TEXT,
+                    title="Resumable Intake Workflow",
+                    domain="psychology",
+                    metadata={"channel": "offline_extract_from_doc"},
+                )
+
+            self.assertEqual(pipeline.document_skill_extractor.calls, 1)
+
+            result = pipeline.build(
+                data=_DOC_TEXT,
+                title="Resumable Intake Workflow",
+                domain="psychology",
+                metadata={"channel": "offline_extract_from_doc"},
+            )
+
+            self.assertEqual(pipeline.document_skill_extractor.calls, 1)
+            self.assertTrue(result.intermediate.get("resumed"))
+            self.assertGreaterEqual(len(result.registration.skill_specs), 1)
 
 
 if __name__ == "__main__":

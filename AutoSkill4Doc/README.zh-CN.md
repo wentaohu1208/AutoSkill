@@ -39,6 +39,7 @@ document
 - 支持生命周期状态：`candidate -> draft -> evaluating -> active -> watchlist -> deprecated -> retired`
 - 支持在文档技能库根目录下生成 `领域总技能 / Family技能 / 一级技能 / 二级技能 / 微技能 / references` 可见树
 - 非 `dry-run` 构建过程中会把中间结果写到 `.runtime/intermediate_runs/<run_id>/`
+- 检索使用的文本、向量和 BM25 token index 会落盘到 `.runtime/store/document_skill_retrieval.json`
 - 支持通过内置或自定义 YAML 配置技能 taxonomy，`domain_type` 由调用方显式提供，不由模型预测
 
 输入说明：
@@ -113,6 +114,8 @@ document
   .runtime/
     document_registry/
     intermediate_runs/
+    store/
+      document_skill_retrieval.json
     staging/
     library_manifest.json
 ```
@@ -127,7 +130,9 @@ document
    - 面向浏览和导出的领域根、family 根以及 `一级技能 / 二级技能 / 微技能` 投影
 
 它们共用同一个根目录，但不是同一份数据。对于长任务，非 `dry-run`
-构建还会把阶段快照持续写到 `.runtime/intermediate_runs/<run_id>/`。
+构建还会把阶段快照持续写到 `.runtime/intermediate_runs/<run_id>/`。如果任务在
+ingest / extract / compile / register 之后中断，重新用相同输入和配置启动时，
+会自动复用最近一次未完成 run 的阶段快照继续执行，而不是从头再抽取一遍。
 
 ## 总技能 / 子技能是如何生成的
 
@@ -144,6 +149,7 @@ document
    - `extract` 负责从 window 提取 `SupportRecord + SkillDraft`
    - `compile` 负责把 draft 归一成 `SkillSpec`
    - `register_versions` 会先用带 metadata 的技能文本做 embedding + BM25 hybrid 检索，召回 top-k 相似旧技能，再判断 create / strengthen / revise / merge / split / unchanged，最后做 registry 持久化和版本状态处理
+   - 检索语料文本、向量和 BM25 token index 会持久化到 `.runtime/store/document_skill_retrieval.json`，下次运行优先复用
 
 2. 再把结果投影成可见 domain/family 树
    - 如果最终 store skill 已存在，可见 family 技能会优先按 `Users/<internal_user>/...` 里的最终技能重建
@@ -370,6 +376,8 @@ python3 -m AutoSkill4Doc build \
 - `dry-run` 会跑 ingest/extract/compile 供你查看结果，但不会写入最终 registry / skill store / 可见技能树。
 - `diag` 始终以 dry-run 观察模式运行，不会写入 registry 或 skill store。
 - 非 `dry-run` 的 `build / llm-extract` 会把 ingest / extract / compile / register 的阶段快照写到 `.runtime/intermediate_runs/<run_id>/`。
+- 同一个非 `dry-run` 构建还会把检索文本、embedding 向量和 BM25 token index 写到 `.runtime/store/document_skill_retrieval.json`。
+- 重新运行相同的非 `dry-run` 输入/配置时，会自动恢复最近一次未完成的 intermediate run；已经完成抽取的文档不会再次抽取。
 - 如果库里当前只存在一个可见 family，`retrieve-hierarchy` 会直接打开这棵 family 树，而不是先返回只有一项的 family 列表。
 - `canonical-merge` 当前用于查看 staging 结果。如果 staging 中只有一个唯一 bucket，会自动推导 `profile_id`、`family_name` 和 `child_type`；否则再显式传入。
 - 如果不传 `--family-name`，系统会先用 taxonomy 里的别名/关键词做规则判定，再做一次受约束的 LLM family 分类；如果证据仍然偏弱，就回退到 taxonomy 的 `default_family_name`，而不是候选列表中的第一个 family。

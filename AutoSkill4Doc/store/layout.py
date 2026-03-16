@@ -48,6 +48,12 @@ def runtime_store_root(base_store_root: str = "") -> str:
     return os.path.join(runtime_root(base_store_root), "store")
 
 
+def retrieval_cache_path(base_store_root: str = "") -> str:
+    """Returns the retrieval cache path for persisted texts/vectors/BM25 tokens."""
+
+    return os.path.join(runtime_store_root(base_store_root), "document_skill_retrieval.json")
+
+
 def registry_root(base_store_root: str = "") -> str:
     """Returns the document registry root under the runtime tree."""
 

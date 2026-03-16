@@ -880,7 +880,7 @@ class VersionManager:
                 continue
             corpus_by_id[skill.skill_id] = skill
 
-        hierarchy_retriever = build_document_skill_retriever()
+        hierarchy_retriever = self.retriever or build_document_skill_retriever()
         hierarchy_retriever.refresh(list(corpus_by_id.values()))
 
         updated: Dict[str, SkillSpec] = {}
@@ -1662,9 +1662,11 @@ def register_versions(
     sdk_config = getattr(sdk, "config", None)
     embeddings_config = dict(getattr(sdk_config, "embeddings", {}) or {"provider": "hashing", "dims": 256})
     bm25_weight = float(getattr(sdk_config, "bm25_weight", 0.1) or 0.1)
+    store_root = _store_root_from_context(registry=registry, sdk=sdk)
     retriever = build_document_skill_retriever(
         embeddings_config=embeddings_config,
         bm25_weight=bm25_weight,
+        base_store_root=store_root,
     )
     manager = VersionManager(
         registry=registry,
@@ -1715,6 +1717,11 @@ def register_versions(
                 entity_id=str(payload.get("entity_id") or ""),
                 payload=payload,
             )
+        try:
+            retriever.refresh(list(registry.list_skills()))
+        except Exception as e:
+            reconciled.errors.append({"stage": "retrieval_cache_refresh", "error": str(e)})
+            emit_stage_log(logger, f"[register_versions] retrieval cache refresh error: {e}")
 
     if sdk is not None and reconciled.skill_specs:
         md = dict(metadata or {})

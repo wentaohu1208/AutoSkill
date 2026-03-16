@@ -9,6 +9,7 @@ final registry/store sync completes. This module writes stage snapshots under
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import json
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -56,6 +57,44 @@ def new_intermediate_run_id() -> str:
     return new_staging_run_id()
 
 
+def build_resume_key(payload: Dict[str, Any]) -> str:
+    """Builds a stable resume key for one pipeline invocation."""
+
+    normalized = json.dumps(dict(payload or {}), ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def find_intermediate_run_by_resume_key(*, base_store_root: str, resume_key: str) -> Optional[Dict[str, Any]]:
+    """Returns the latest unfinished intermediate run that matches one resume key."""
+
+    root = os.path.join(normalize_library_root(base_store_root), ".runtime", "intermediate_runs")
+    key = str(resume_key or "").strip()
+    if not key or not os.path.isdir(root):
+        return None
+    matches: List[Dict[str, Any]] = []
+    for name in sorted(os.listdir(root)):
+        status_path = os.path.join(root, name, "status.json")
+        if not os.path.isfile(status_path):
+            continue
+        try:
+            with open(status_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        metadata = dict(payload.get("metadata") or {})
+        if str(metadata.get("resume_key") or "").strip() != key:
+            continue
+        if str(payload.get("status") or "").strip() == "completed":
+            continue
+        matches.append(payload)
+    if not matches:
+        return None
+    matches.sort(key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""))
+    return matches[-1]
+
+
 class IntermediateRunWriter:
     """Writes incremental stage snapshots for one document build run."""
 
@@ -65,6 +104,7 @@ class IntermediateRunWriter:
         base_store_root: str,
         run_id: str = "",
         metadata: Optional[Dict[str, Any]] = None,
+        resume_existing: bool = False,
     ) -> None:
         store_root = normalize_library_root(base_store_root)
         resolved_run_id = safe_run_id(run_id or new_intermediate_run_id())
@@ -72,6 +112,18 @@ class IntermediateRunWriter:
         self.run_dir = intermediate_run_dir(base_store_root=store_root, run_id=resolved_run_id)
         self.status_path = os.path.join(self.run_dir, "status.json")
         self._files: List[str] = []
+        if resume_existing and os.path.isfile(self.status_path):
+            with open(self.status_path, "r", encoding="utf-8") as f:
+                self._state = json.load(f)
+            if not isinstance(self._state, dict):
+                self._state = {}
+            self._state["run_id"] = self.run_id
+            self._state["run_dir"] = self.run_dir
+            self._state["status"] = "running"
+            self._state["updated_at"] = now_iso()
+            self._files = self._discover_files()
+            self._flush_state()
+            return
         self._state: Dict[str, Any] = {
             "run_id": self.run_id,
             "run_dir": self.run_dir,
@@ -91,6 +143,20 @@ class IntermediateRunWriter:
         }
         os.makedirs(self.run_dir, exist_ok=True)
         self._flush_state()
+
+    def _discover_files(self) -> List[str]:
+        """Discovers persisted files already present under the run directory."""
+
+        out: List[str] = []
+        if not os.path.isdir(self.run_dir):
+            return out
+        for root, _, files in os.walk(self.run_dir):
+            for name in sorted(files):
+                path = os.path.join(root, name)
+                if path == self.status_path:
+                    continue
+                out.append(path)
+        return out
 
     def summary(self) -> IntermediateRunSummary:
         """Builds the latest run summary."""
@@ -199,6 +265,42 @@ class IntermediateRunWriter:
             },
         )
 
+    def load_ingest(self) -> "DocumentIngestResult":
+        """Loads the completed ingest snapshot."""
+
+        from ..ingest import DocumentIngestResult
+        from ..models import TextUnit
+
+        path = os.path.join(self.run_dir, "ingest", "result.json")
+        documents: List[DocumentRecord] = []
+        skipped_documents: List[DocumentRecord] = []
+        text_units: List[TextUnit] = []
+        windows: List[StrictWindow] = []
+        errors: List[Dict[str, Any]] = []
+        source_file = str(self._state.get("source_file") or "").strip()
+        if not os.path.isfile(path):
+            return DocumentIngestResult(source_file=source_file, errors=[{"stage": "intermediate_ingest_load", "error": "ingest snapshot not found"}])
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if isinstance(payload, dict):
+                source_file = str(payload.get("source_file") or source_file).strip()
+                documents = [DocumentRecord.from_dict(item) for item in list(payload.get("documents") or []) if isinstance(item, dict)]
+                skipped_documents = [DocumentRecord.from_dict(item) for item in list(payload.get("skipped_documents") or []) if isinstance(item, dict)]
+                text_units = [TextUnit.from_dict(item) for item in list(payload.get("text_units") or []) if isinstance(item, dict)]
+                windows = [StrictWindow.from_dict(item) for item in list(payload.get("windows") or []) if isinstance(item, dict)]
+                errors = [{"stage": "intermediate_ingest_load", **item} for item in list(payload.get("errors") or []) if isinstance(item, dict)]
+        except Exception as exc:
+            errors.append({"stage": "intermediate_ingest_load", "path": path, "error": str(exc)})
+        return DocumentIngestResult(
+            source_file=source_file,
+            text_units=text_units,
+            documents=documents,
+            skipped_documents=skipped_documents,
+            windows=windows,
+            errors=errors,
+        )
+
     def load_extract(self) -> "SkillExtractionResult":
         """Loads aggregated extraction results from per-document progress files."""
 
@@ -285,6 +387,27 @@ class IntermediateRunWriter:
             extractor_name="llm",
         )
 
+    def processed_extract_doc_ids(self) -> List[str]:
+        """Returns document ids that already have per-document extract snapshots."""
+
+        extract_dir = os.path.join(self.run_dir, "extract", "documents")
+        out: List[str] = []
+        if not os.path.isdir(extract_dir):
+            return out
+        for name in sorted(os.listdir(extract_dir)):
+            if not name.endswith(".json"):
+                continue
+            path = os.path.join(extract_dir, name)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+            except Exception:
+                continue
+            doc_id = str((payload or {}).get("doc_id") or "").strip()
+            if doc_id:
+                out.append(doc_id)
+        return out
+
     def write_compile(self, result: "SkillCompilationResult") -> None:
         """Writes the completed compile snapshot."""
 
@@ -305,6 +428,37 @@ class IntermediateRunWriter:
             },
         )
 
+    def load_compile(self) -> "SkillCompilationResult":
+        """Loads the completed compile snapshot."""
+
+        from ..models import SkillSpec
+        from ..stages.compiler import SkillCompilationResult
+
+        path = os.path.join(self.run_dir, "compile", "result.json")
+        support_records: List[SupportRecord] = []
+        skill_drafts: List[SkillDraft] = []
+        skill_specs: List[SkillSpec] = []
+        errors: List[Dict[str, Any]] = []
+        if not os.path.isfile(path):
+            return SkillCompilationResult(errors=[{"stage": "intermediate_compile_load", "error": "compile snapshot not found"}])
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if isinstance(payload, dict):
+                support_records = [SupportRecord.from_dict(item) for item in list(payload.get("support_records") or []) if isinstance(item, dict)]
+                skill_drafts = [SkillDraft.from_dict(item) for item in list(payload.get("skill_drafts") or []) if isinstance(item, dict)]
+                skill_specs = [SkillSpec.from_dict(item) for item in list(payload.get("skill_specs") or []) if isinstance(item, dict)]
+                errors = [{"stage": "intermediate_compile_load", **item} for item in list(payload.get("errors") or []) if isinstance(item, dict)]
+        except Exception as exc:
+            errors.append({"stage": "intermediate_compile_load", "path": path, "error": str(exc)})
+        return SkillCompilationResult(
+            support_records=support_records,
+            skill_drafts=skill_drafts,
+            skill_specs=skill_specs,
+            errors=errors,
+            compiler_name="llm",
+        )
+
     def write_registration(self, result: "VersionRegistrationResult") -> None:
         """Writes the completed registration snapshot."""
 
@@ -312,6 +466,7 @@ class IntermediateRunWriter:
             "documents": [doc.to_dict() for doc in list(result.documents or [])],
             "support_records": [support.to_dict() for support in list(result.support_records or [])],
             "skill_specs": [skill.to_dict() for skill in list(result.skill_specs or [])],
+            "hierarchy_updates": [skill.to_dict() for skill in list(result.hierarchy_updates or [])],
             "lifecycles": [item.to_dict() for item in list(result.lifecycles or [])],
             "change_logs": list(result.change_logs or []),
             "version_history": list(result.version_history or []),
@@ -336,6 +491,63 @@ class IntermediateRunWriter:
             },
         )
 
+    def load_registration(self) -> "VersionRegistrationResult":
+        """Loads the completed registration snapshot."""
+
+        from ..models import SkillLifecycle, SkillSpec
+        from ..store.versioning import VersionRegistrationResult
+
+        path = os.path.join(self.run_dir, "register", "result.json")
+        documents: List[DocumentRecord] = []
+        support_records: List[SupportRecord] = []
+        skill_specs: List[SkillSpec] = []
+        hierarchy_updates: List[SkillSpec] = []
+        lifecycles: List[SkillLifecycle] = []
+        change_logs: List[Dict[str, Any]] = []
+        version_history: List[Dict[str, Any]] = []
+        provenance_links: List[Dict[str, Any]] = []
+        upserted_store_skills: List[Dict[str, Any]] = []
+        staging_runs: List[Dict[str, Any]] = []
+        visible_tree: Dict[str, Any] = {}
+        errors: List[Dict[str, Any]] = []
+        dry_run = False
+        if not os.path.isfile(path):
+            return VersionRegistrationResult(errors=[{"stage": "intermediate_register_load", "error": "register snapshot not found"}])
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if isinstance(payload, dict):
+                documents = [DocumentRecord.from_dict(item) for item in list(payload.get("documents") or []) if isinstance(item, dict)]
+                support_records = [SupportRecord.from_dict(item) for item in list(payload.get("support_records") or []) if isinstance(item, dict)]
+                skill_specs = [SkillSpec.from_dict(item) for item in list(payload.get("skill_specs") or []) if isinstance(item, dict)]
+                hierarchy_updates = [SkillSpec.from_dict(item) for item in list(payload.get("hierarchy_updates") or []) if isinstance(item, dict)]
+                lifecycles = [SkillLifecycle.from_dict(item) for item in list(payload.get("lifecycles") or []) if isinstance(item, dict)]
+                change_logs = [dict(item) for item in list(payload.get("change_logs") or []) if isinstance(item, dict)]
+                version_history = [dict(item) for item in list(payload.get("version_history") or []) if isinstance(item, dict)]
+                provenance_links = [dict(item) for item in list(payload.get("provenance_links") or []) if isinstance(item, dict)]
+                upserted_store_skills = [dict(item) for item in list(payload.get("upserted_store_skills") or []) if isinstance(item, dict)]
+                staging_runs = [dict(item) for item in list(payload.get("staging_runs") or []) if isinstance(item, dict)]
+                visible_tree = dict(payload.get("visible_tree") or {})
+                dry_run = bool(payload.get("dry_run"))
+                errors = [{"stage": "intermediate_register_load", **item} for item in list(payload.get("errors") or []) if isinstance(item, dict)]
+        except Exception as exc:
+            errors.append({"stage": "intermediate_register_load", "path": path, "error": str(exc)})
+        return VersionRegistrationResult(
+            documents=documents,
+            support_records=support_records,
+            skill_specs=skill_specs,
+            hierarchy_updates=hierarchy_updates,
+            lifecycles=lifecycles,
+            change_logs=change_logs,
+            version_history=version_history,
+            provenance_links=provenance_links,
+            upserted_store_skills=upserted_store_skills,
+            staging_runs=staging_runs,
+            visible_tree=visible_tree,
+            errors=errors,
+            dry_run=dry_run,
+        )
+
     def complete(self, *, summary: Optional[Dict[str, Any]] = None) -> None:
         """Marks the intermediate run as completed and optionally writes a summary."""
 
@@ -352,6 +564,11 @@ class IntermediateRunWriter:
         self._state["updated_at"] = now_iso()
         self._state["last_error"] = str(error or "").strip()
         self._flush_state()
+
+    def has_completed_stage(self, stage: str) -> bool:
+        """Returns whether one stage was already completed in this run."""
+
+        return str(stage or "").strip() in {str(item or "").strip() for item in list(self._state.get("completed_stages") or [])}
 
     def _write_json(self, relative_path: str, payload: Any) -> str:
         path = os.path.join(self.run_dir, relative_path)

@@ -1,11 +1,18 @@
 """Registry and versioning helpers for AutoSkill4Doc."""
 
-from .intermediate import IntermediateRunSummary, IntermediateRunWriter, new_intermediate_run_id
+from .intermediate import (
+    IntermediateRunSummary,
+    IntermediateRunWriter,
+    build_resume_key,
+    find_intermediate_run_by_resume_key,
+    new_intermediate_run_id,
+)
 from .layout import (
     intermediate_run_dir,
     intermediate_runs_root,
     library_manifest_path,
     normalize_library_root,
+    retrieval_cache_path,
     registry_root,
     runtime_root,
     staging_root,
@@ -37,6 +44,7 @@ __all__ = [
     "intermediate_runs_root",
     "intermediate_run_dir",
     "library_manifest_path",
+    "retrieval_cache_path",
     "SkillRetrievalHit",
     "DocumentSkillRetriever",
     "build_document_skill_retriever",
@@ -44,6 +52,8 @@ __all__ = [
     "DEFAULT_RETRIEVAL_LIMIT",
     "IntermediateRunSummary",
     "IntermediateRunWriter",
+    "build_resume_key",
+    "find_intermediate_run_by_resume_key",
     "new_intermediate_run_id",
     "DocumentRegistry",
     "build_registry_from_store_config",

@@ -9,17 +9,24 @@ metadata such as asset layer, domain type, family, stage, and workflow fields.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
+import math
+import os
+from collections import Counter
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from autoskill.embeddings.base import EmbeddingModel
 from autoskill.embeddings.factory import build_embeddings
-from autoskill.management.stores.hybrid_rank import blend_scores, bm25_normalized_scores
+from autoskill.management.stores.hybrid_rank import blend_scores, tokenize_for_bm25
 
 from ..core.common import dedupe_strings, normalize_text
 from ..models import SkillSpec
+from .layout import retrieval_cache_path
 
 DEFAULT_RETRIEVAL_LIMIT = 8
 DEFAULT_BM25_WEIGHT = 0.1
+_RETRIEVAL_CACHE_SCHEMA = "autoskill.document_skill_retrieval.v1"
 
 
 def _dot(a: Sequence[float], b: Sequence[float]) -> float:
@@ -28,6 +35,12 @@ def _dot(a: Sequence[float], b: Sequence[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
     return float(sum(float(x) * float(y) for x, y in zip(a, b)))
+
+
+def _text_hash(text: str) -> str:
+    """Builds a stable hash for one retrieval text payload."""
+
+    return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()
 
 
 def _granularity_rank(value: str) -> int:
@@ -75,6 +88,62 @@ def _asset_node_id(skill: SkillSpec) -> str:
     """Returns the configured hierarchical asset node id for one skill."""
 
     return str(getattr(skill, "asset_node_id", "") or _metadata_value(skill, "asset_node_id")).strip()
+
+
+def _bm25_scores_from_tokens(
+    query: str,
+    docs: Dict[str, Sequence[str]],
+    *,
+    k1: float = 1.5,
+    b: float = 0.75,
+) -> Dict[str, float]:
+    """Computes normalized BM25 scores from pre-tokenized docs."""
+
+    if not docs:
+        return {}
+
+    q_terms = tokenize_for_bm25(query)
+    if not q_terms:
+        return {str(doc_id): 0.0 for doc_id in docs.keys()}
+
+    q_tf = Counter(q_terms)
+    doc_tf: Dict[str, Counter[str]] = {}
+    doc_len: Dict[str, int] = {}
+    df: Counter[str] = Counter()
+
+    for doc_id, tokens in docs.items():
+        did = str(doc_id)
+        tf = Counter([str(token or "").strip().lower() for token in list(tokens or []) if str(token or "").strip()])
+        doc_tf[did] = tf
+        doc_len[did] = sum(tf.values())
+        for term in tf.keys():
+            df[term] += 1
+
+    n_docs = max(1, len(doc_tf))
+    avgdl = (sum(doc_len.values()) / float(n_docs)) if n_docs > 0 else 1.0
+    if avgdl <= 0:
+        avgdl = 1.0
+
+    raw: Dict[str, float] = {}
+    for did, tf in doc_tf.items():
+        dl = max(1, int(doc_len.get(did, 0)))
+        score = 0.0
+        for term, qf in q_tf.items():
+            f = int(tf.get(term, 0))
+            if f <= 0:
+                continue
+            n_qi = int(df.get(term, 0))
+            idf = math.log(1.0 + ((n_docs - n_qi + 0.5) / (n_qi + 0.5)))
+            denom = f + float(k1) * (1.0 - float(b) + float(b) * (dl / avgdl))
+            if denom <= 0:
+                continue
+            score += float(qf) * idf * ((f * (float(k1) + 1.0)) / denom)
+        raw[did] = float(score)
+
+    max_score = max(raw.values()) if raw else 0.0
+    if max_score <= 0:
+        return {did: 0.0 for did in doc_tf.keys()}
+    return {did: max(0.0, float(score) / float(max_score)) for did, score in raw.items()}
 
 
 def skill_retrieval_text(skill: SkillSpec) -> str:
@@ -136,41 +205,116 @@ class DocumentSkillRetriever:
         *,
         embeddings: Optional[EmbeddingModel],
         bm25_weight: float = DEFAULT_BM25_WEIGHT,
+        cache_path: str = "",
     ) -> None:
         self._embeddings = embeddings
         self._bm25_weight = float(bm25_weight)
+        self._cache_path = os.path.abspath(os.path.expanduser(str(cache_path or "").strip())) if str(cache_path or "").strip() else ""
         self._skills: Dict[str, SkillSpec] = {}
         self._texts: Dict[str, str] = {}
+        self._tokens: Dict[str, List[str]] = {}
         self._vectors: Dict[str, List[float]] = {}
         self._vectors_available = embeddings is not None and not bool(getattr(embeddings, "disabled", False))
+        self._load_cache()
+
+    def _load_cache(self) -> None:
+        """Loads persisted retrieval texts/vectors/token index from disk."""
+
+        if not self._cache_path or not os.path.isfile(self._cache_path):
+            return
+        try:
+            with open(self._cache_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            return
+        if not isinstance(payload, dict) or str(payload.get("schema") or "").strip() != _RETRIEVAL_CACHE_SCHEMA:
+            return
+        entries = payload.get("entries")
+        if not isinstance(entries, dict):
+            return
+        for skill_id, item in entries.items():
+            if not isinstance(item, dict):
+                continue
+            skill_id_s = str(skill_id or "").strip()
+            text = str(item.get("text") or "").strip()
+            if skill_id_s and text:
+                self._texts[skill_id_s] = text
+            tokens = item.get("tokens")
+            if skill_id_s and isinstance(tokens, list):
+                self._tokens[skill_id_s] = [str(token or "").strip().lower() for token in tokens if str(token or "").strip()]
+            vector = item.get("vector")
+            if skill_id_s and isinstance(vector, list):
+                vec = [float(x) for x in list(vector or []) if x is not None]
+                if vec:
+                    self._vectors[skill_id_s] = vec
+
+    def _write_cache(self) -> None:
+        """Persists retrieval texts/vectors/token index to disk."""
+
+        if not self._cache_path:
+            return
+        payload = {
+            "schema": _RETRIEVAL_CACHE_SCHEMA,
+            "entries": {
+                skill_id: {
+                    "text": self._texts.get(skill_id, ""),
+                    "text_hash": _text_hash(self._texts.get(skill_id, "")),
+                    "tokens": list(self._tokens.get(skill_id, []) or []),
+                    "vector": list(self._vectors.get(skill_id, []) or []),
+                }
+                for skill_id in sorted(set(list(self._texts.keys()) + list(self._vectors.keys()) + list(self._tokens.keys())))
+                if str(skill_id or "").strip()
+            },
+        }
+        os.makedirs(os.path.dirname(self._cache_path), exist_ok=True)
+        with open(self._cache_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
 
     def refresh(self, skills: Sequence[SkillSpec]) -> None:
         """Rebuilds the retriever corpus from a skill sequence."""
 
         self._skills = {}
+        previous_texts = dict(self._texts)
+        previous_tokens = dict(self._tokens)
+        previous_vectors = dict(self._vectors)
         self._texts = {}
+        self._tokens = {}
         self._vectors = {}
         ordered_ids: List[str] = []
+        texts_to_embed: List[str] = []
+        ids_to_embed: List[str] = []
         for skill in list(skills or []):
             skill_id = str(skill.skill_id or "").strip()
             if not skill_id:
                 continue
             self._skills[skill_id] = skill
-            self._texts[skill_id] = skill_retrieval_text(skill)
+            text = skill_retrieval_text(skill)
+            self._texts[skill_id] = text
+            self._tokens[skill_id] = previous_tokens.get(skill_id) or tokenize_for_bm25(text)
+            cached_text = previous_texts.get(skill_id, "")
+            if cached_text and _text_hash(cached_text) == _text_hash(text) and previous_vectors.get(skill_id):
+                self._vectors[skill_id] = list(previous_vectors.get(skill_id) or [])
+            elif self._vectors_available:
+                ids_to_embed.append(skill_id)
+                texts_to_embed.append(text)
             ordered_ids.append(skill_id)
 
+        if self._vectors_available and texts_to_embed:
+            try:
+                embedded = self._embeddings.embed(texts_to_embed)
+                for skill_id, vec in zip(ids_to_embed, embedded):
+                    values = [float(x) for x in list(vec or []) if x is not None]
+                    if values:
+                        self._vectors[skill_id] = values
+            except Exception:
+                self._vectors_available = False
+                self._vectors = {skill_id: vec for skill_id, vec in self._vectors.items() if vec}
+        if not self._vectors_available:
+            self._vectors = {}
+        if ordered_ids:
+            self._write_cache()
         if not self._vectors_available or not ordered_ids:
             return
-        try:
-            embedded = self._embeddings.embed([self._texts[skill_id] for skill_id in ordered_ids])
-            self._vectors = {
-                skill_id: [float(x) for x in list(vec or [])]
-                for skill_id, vec in zip(ordered_ids, embedded)
-                if vec
-            }
-        except Exception:
-            self._vectors_available = False
-            self._vectors = {}
 
     def upsert(self, skill: SkillSpec) -> None:
         """Adds or replaces one skill in the retrieval corpus."""
@@ -181,7 +325,9 @@ class DocumentSkillRetriever:
         self._skills[skill_id] = skill
         text = skill_retrieval_text(skill)
         self._texts[skill_id] = text
+        self._tokens[skill_id] = tokenize_for_bm25(text)
         if not self._vectors_available:
+            self._write_cache()
             return
         try:
             embedded = self._embeddings.embed([text])[0]
@@ -189,6 +335,7 @@ class DocumentSkillRetriever:
         except Exception:
             self._vectors_available = False
             self._vectors = {}
+        self._write_cache()
 
     def remove(self, skill_id: str) -> None:
         """Removes one skill from the retrieval corpus."""
@@ -198,7 +345,9 @@ class DocumentSkillRetriever:
             return
         self._skills.pop(skill_id_s, None)
         self._texts.pop(skill_id_s, None)
+        self._tokens.pop(skill_id_s, None)
         self._vectors.pop(skill_id_s, None)
+        self._write_cache()
 
     def search(
         self,
@@ -247,8 +396,11 @@ class DocumentSkillRetriever:
             return []
 
         query = skill_retrieval_text(candidate)
-        docs = {skill.skill_id: self._texts.get(skill.skill_id) or skill_retrieval_text(skill) for skill in pool}
-        bm25_scores = bm25_normalized_scores(query=query, docs=docs)
+        docs = {
+            skill.skill_id: self._tokens.get(skill.skill_id) or tokenize_for_bm25(self._texts.get(skill.skill_id) or skill_retrieval_text(skill))
+            for skill in pool
+        }
+        bm25_scores = _bm25_scores_from_tokens(query=query, docs=docs)
 
         vector_scores: Dict[str, float] = {}
         use_vector = False
@@ -356,8 +508,11 @@ class DocumentSkillRetriever:
             return []
 
         query = skill_retrieval_text(candidate)
-        docs = {skill.skill_id: self._texts.get(skill.skill_id) or skill_retrieval_text(skill) for skill in pool}
-        bm25_scores = bm25_normalized_scores(query=query, docs=docs)
+        docs = {
+            skill.skill_id: self._tokens.get(skill.skill_id) or tokenize_for_bm25(self._texts.get(skill.skill_id) or skill_retrieval_text(skill))
+            for skill in pool
+        }
+        bm25_scores = _bm25_scores_from_tokens(query=query, docs=docs)
 
         vector_scores: Dict[str, float] = {}
         use_vector = False
@@ -402,6 +557,8 @@ def build_document_skill_retriever(
     *,
     embeddings_config: Optional[Dict[str, Any]] = None,
     bm25_weight: float = DEFAULT_BM25_WEIGHT,
+    base_store_root: str = "",
+    cache_path: str = "",
 ) -> DocumentSkillRetriever:
     """Builds the document retriever from one embedding config."""
 
@@ -409,4 +566,5 @@ def build_document_skill_retriever(
     if not config:
         config = {"provider": "hashing", "dims": 256}
     embeddings = build_embeddings(config)
-    return DocumentSkillRetriever(embeddings=embeddings, bm25_weight=bm25_weight)
+    resolved_cache_path = str(cache_path or "").strip() or retrieval_cache_path(base_store_root)
+    return DocumentSkillRetriever(embeddings=embeddings, bm25_weight=bm25_weight, cache_path=resolved_cache_path)

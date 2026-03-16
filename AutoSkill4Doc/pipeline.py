@@ -12,6 +12,8 @@ any stage independently:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
+import json
 import os
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -46,7 +48,12 @@ from .ingest import (
 from .models import DocumentRecord, SkillDraft, SkillSpec, SupportRecord, VersionState
 from .models import StrictWindow
 from .family_resolver import DocumentFamilyResolver, build_document_family_resolver
-from .store.intermediate import IntermediateRunWriter, new_intermediate_run_id
+from .store.intermediate import (
+    IntermediateRunWriter,
+    build_resume_key,
+    find_intermediate_run_by_resume_key,
+    new_intermediate_run_id,
+)
 from .store.registry import DocumentRegistry, build_registry_from_store_config
 from .store.versioning import VersionRegistrationResult, register_versions
 from .taxonomy import SkillTaxonomy, load_skill_taxonomy
@@ -373,6 +380,7 @@ class DocumentBuildPipeline:
         effective_state = target_state or (VersionState.DRAFT if dry_run else VersionState.ACTIVE)
         intermediate_writer = None
         intermediate_summary: Dict[str, Any] = {}
+        resumed_run = False
         if not dry_run:
             store_root = ""
             if self.sdk is not None:
@@ -383,28 +391,60 @@ class DocumentBuildPipeline:
                 if os.path.basename(runtime_dir) == ".runtime":
                     store_root = os.path.dirname(runtime_dir)
             if store_root:
+                llm_cfg = dict(getattr(getattr(self.sdk, "config", None), "llm", {}) or {})
+                emb_cfg = dict(getattr(getattr(self.sdk, "config", None), "embeddings", {}) or {})
+                if file_path:
+                    input_signature = self._file_input_signature(file_path=file_path)
+                else:
+                    input_signature = self._data_input_signature(data)
+                resume_payload = {
+                    "input_signature": input_signature,
+                    "title": str(title or "").strip(),
+                    "source_type": str(source_type or "").strip(),
+                    "domain": str(domain or "").strip(),
+                    "metadata": compact_metadata(dict(metadata or {})),
+                    "max_documents": int(max_documents or 0),
+                    "extract_strategy": str(extract_strategy or "").strip(),
+                    "llm_provider": str(llm_cfg.get("provider") or "").strip(),
+                    "llm_model": str(llm_cfg.get("model") or "").strip(),
+                    "embeddings_provider": str(emb_cfg.get("provider") or "").strip(),
+                    "embeddings_model": str(emb_cfg.get("model") or "").strip(),
+                }
+                resume_key = build_resume_key(resume_payload)
+                resume_metadata = dict(metadata or {})
+                resume_metadata["resume_key"] = resume_key
+                resumable = find_intermediate_run_by_resume_key(base_store_root=store_root, resume_key=resume_key)
                 intermediate_writer = IntermediateRunWriter(
                     base_store_root=store_root,
-                    run_id=new_intermediate_run_id(),
-                    metadata=metadata,
+                    run_id=str((resumable or {}).get("run_id") or new_intermediate_run_id()),
+                    metadata=resume_metadata,
+                    resume_existing=bool(resumable),
                 )
+                if resumable:
+                    resumed_run = True
+                    intermediate_writer.update_metadata({"resumed_from_run_id": str((resumable or {}).get("run_id") or "").strip()})
                 intermediate_summary = intermediate_writer.summary().to_dict()
         base_metadata = dict(metadata or {})
-        ingest_result = self.ingest_document(
-            data=data,
-            file_path=file_path,
-            title=title,
-            source_type=source_type,
-            domain=domain,
-            metadata=base_metadata,
-            continue_on_error=continue_on_error,
-            dry_run=dry_run,
-            max_documents=max_documents,
-            extract_strategy=extract_strategy,
-        )
         if intermediate_writer is not None:
-            intermediate_writer.write_ingest(ingest_result)
-            intermediate_summary = intermediate_writer.summary().to_dict()
+            base_metadata["resume_key"] = str((intermediate_writer._state.get("metadata") or {}).get("resume_key") or "").strip()
+        if intermediate_writer is not None and intermediate_writer.has_completed_stage("ingest"):
+            ingest_result = intermediate_writer.load_ingest()
+        else:
+            ingest_result = self.ingest_document(
+                data=data,
+                file_path=file_path,
+                title=title,
+                source_type=source_type,
+                domain=domain,
+                metadata=base_metadata,
+                continue_on_error=continue_on_error,
+                dry_run=dry_run,
+                max_documents=max_documents,
+                extract_strategy=extract_strategy,
+            )
+            if intermediate_writer is not None:
+                intermediate_writer.write_ingest(ingest_result)
+                intermediate_summary = intermediate_writer.summary().to_dict()
         resolved_metadata = self.resolve_run_metadata(documents=ingest_result.documents, metadata=base_metadata)
         resolved_metadata = compact_metadata(resolved_metadata)
         if intermediate_writer is not None:
@@ -416,46 +456,46 @@ class DocumentBuildPipeline:
         for document in list(ingest_result.skipped_documents or []):
             document.metadata.update(resolved_metadata)
         try:
-            extracted_result = self.extract_skills(
-                documents=ingest_result.documents,
-                windows=ingest_result.windows,
-                taxonomy=effective_taxonomy,
-                accumulate_result=(intermediate_writer is None),
-                progress_callback=(
-                    None
-                    if intermediate_writer is None
-                    else lambda record, supports, drafts, cumulative: intermediate_writer.write_extract_progress(
-                        record=record,
-                        supports=supports,
-                        drafts=drafts,
-                        total_documents=len(ingest_result.documents),
-                    )
-                ),
-            )
             if intermediate_writer is not None:
-                extracted_result = intermediate_writer.load_extract()
-                intermediate_writer.write_extract(extracted_result)
+                extracted_result = self._resume_or_extract(
+                    intermediate_writer=intermediate_writer,
+                    ingest_result=ingest_result,
+                    taxonomy=effective_taxonomy,
+                )
                 intermediate_summary = intermediate_writer.summary().to_dict()
-            compiled_result = self.compile_skills(
-                skill_drafts=extracted_result.skill_drafts,
-                support_records=extracted_result.support_records,
-                target_state=effective_state,
-            )
-            if intermediate_writer is not None:
-                intermediate_writer.write_compile(compiled_result)
-                intermediate_summary = intermediate_writer.summary().to_dict()
-            registration_result = self.register_versions(
-                documents=ingest_result.documents,
-                support_records=compiled_result.support_records,
-                skill_specs=compiled_result.skill_specs,
-                user_id=user_id,
-                metadata=resolved_metadata,
-                dry_run=dry_run,
-                target_state=effective_state,
-            )
-            if intermediate_writer is not None:
-                intermediate_writer.write_registration(registration_result)
-                intermediate_summary = intermediate_writer.summary().to_dict()
+            else:
+                extracted_result = self.extract_skills(
+                    documents=ingest_result.documents,
+                    windows=ingest_result.windows,
+                    taxonomy=effective_taxonomy,
+                    accumulate_result=True,
+                )
+            if intermediate_writer is not None and intermediate_writer.has_completed_stage("compile"):
+                compiled_result = intermediate_writer.load_compile()
+            else:
+                compiled_result = self.compile_skills(
+                    skill_drafts=extracted_result.skill_drafts,
+                    support_records=extracted_result.support_records,
+                    target_state=effective_state,
+                )
+                if intermediate_writer is not None:
+                    intermediate_writer.write_compile(compiled_result)
+                    intermediate_summary = intermediate_writer.summary().to_dict()
+            if intermediate_writer is not None and intermediate_writer.has_completed_stage("register"):
+                registration_result = intermediate_writer.load_registration()
+            else:
+                registration_result = self.register_versions(
+                    documents=ingest_result.documents,
+                    support_records=compiled_result.support_records,
+                    skill_specs=compiled_result.skill_specs,
+                    user_id=user_id,
+                    metadata=resolved_metadata,
+                    dry_run=dry_run,
+                    target_state=effective_state,
+                )
+                if intermediate_writer is not None:
+                    intermediate_writer.write_registration(registration_result)
+                    intermediate_summary = intermediate_writer.summary().to_dict()
             build_result = DocumentBuildResult(
                 ingest=ingest_result,
                 extracted=extracted_result,
@@ -465,14 +505,108 @@ class DocumentBuildPipeline:
                 intermediate=dict(intermediate_summary or {}),
             )
             if intermediate_writer is not None:
+                if resumed_run:
+                    build_result.intermediate["resumed"] = True
                 intermediate_writer.complete(summary=build_result.to_dict())
                 intermediate_summary = intermediate_writer.summary().to_dict()
                 build_result.intermediate = dict(intermediate_summary or {})
+                if resumed_run:
+                    build_result.intermediate["resumed"] = True
             return build_result
         except Exception as exc:
             if intermediate_writer is not None:
                 intermediate_writer.fail(error=str(exc))
             raise
+
+    @staticmethod
+    def _data_input_signature(data: Optional[Any]) -> str:
+        """Builds a stable content signature for in-memory input payloads."""
+
+        if data is None:
+            return ""
+        if isinstance(data, bytes):
+            raw = data
+        elif isinstance(data, str):
+            raw = data.encode("utf-8")
+        else:
+            raw = json.dumps(data, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+        return hashlib.sha256(raw).hexdigest()
+
+    @staticmethod
+    def _file_input_signature(*, file_path: str) -> Dict[str, Any]:
+        """Builds a lightweight change signature for a file or directory input."""
+
+        abs_path = os.path.abspath(os.path.expanduser(str(file_path or "").strip()))
+        if not abs_path or not os.path.exists(abs_path):
+            return {"path": abs_path, "exists": False}
+        if os.path.isfile(abs_path):
+            stat = os.stat(abs_path)
+            return {"path": abs_path, "type": "file", "size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)}
+        items: List[Dict[str, Any]] = []
+        for root, _, files in os.walk(abs_path):
+            for name in sorted(files):
+                path = os.path.join(root, name)
+                try:
+                    stat = os.stat(path)
+                except OSError:
+                    continue
+                items.append(
+                    {
+                        "relative_path": os.path.relpath(path, abs_path),
+                        "size": int(stat.st_size),
+                        "mtime_ns": int(stat.st_mtime_ns),
+                    }
+                )
+        return {"path": abs_path, "type": "directory", "files": items}
+
+    def _resume_or_extract(
+        self,
+        *,
+        intermediate_writer: IntermediateRunWriter,
+        ingest_result: DocumentIngestResult,
+        taxonomy: SkillTaxonomy,
+    ) -> SkillExtractionResult:
+        """Loads persisted extract progress when possible and continues remaining docs only."""
+
+        if intermediate_writer.has_completed_stage("extract"):
+            return intermediate_writer.load_extract()
+        persisted = intermediate_writer.load_extract()
+        processed_doc_ids = set(intermediate_writer.processed_extract_doc_ids())
+        remaining_docs = [doc for doc in list(ingest_result.documents or []) if str(doc.doc_id or "").strip() not in processed_doc_ids]
+        if not remaining_docs:
+            intermediate_writer.write_extract(persisted)
+            return persisted
+        remaining_doc_ids = {str(doc.doc_id or "").strip() for doc in remaining_docs}
+        remaining_windows = [window for window in list(ingest_result.windows or []) if str(window.doc_id or "").strip() in remaining_doc_ids]
+        fresh = self.extract_skills(
+            documents=remaining_docs,
+            windows=remaining_windows,
+            taxonomy=taxonomy,
+            accumulate_result=True,
+            progress_callback=lambda record, supports, drafts, cumulative: intermediate_writer.write_extract_progress(
+                record=record,
+                supports=supports,
+                drafts=drafts,
+                total_documents=len(ingest_result.documents),
+            ),
+        )
+        supports_by_id = {support.support_id: support for support in list(persisted.support_records or [])}
+        for support in list(fresh.support_records or []):
+            supports_by_id[support.support_id] = support
+        drafts_by_id = {draft.draft_id: draft for draft in list(persisted.skill_drafts or [])}
+        for draft in list(fresh.skill_drafts or []):
+            drafts_by_id[draft.draft_id] = draft
+        errors = list(persisted.errors or []) + list(fresh.errors or [])
+        merged = SkillExtractionResult(
+            documents=list(ingest_result.documents or []),
+            windows=list(ingest_result.windows or []),
+            support_records=list(supports_by_id.values()),
+            skill_drafts=list(drafts_by_id.values()),
+            errors=errors,
+            extractor_name=fresh.extractor_name or persisted.extractor_name,
+        )
+        intermediate_writer.write_extract(merged)
+        return merged
 
 
 def build_default_document_pipeline(

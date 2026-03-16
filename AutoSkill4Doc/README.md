@@ -39,6 +39,7 @@ Core layers:
 - lifecycle-aware versioning: `candidate -> draft -> evaluating -> active -> watchlist -> deprecated -> retired`
 - visible domain/family/level skill tree under the document skill library root
 - incremental intermediate snapshots under `.runtime/intermediate_runs/<run_id>/` during non-dry-run builds
+- persisted retrieval cache under `.runtime/store/document_skill_retrieval.json` for retrieval texts, vectors, and BM25 token index
 - configurable skill taxonomy via built-in or custom YAML files, with `domain_type` supplied by the caller rather than predicted by the model
 
 Input notes:
@@ -113,6 +114,8 @@ Visible output tree:
   .runtime/
     document_registry/
     intermediate_runs/
+    store/
+      document_skill_retrieval.json
     staging/
     library_manifest.json
 ```
@@ -128,7 +131,10 @@ Storage layers under the same library root:
 
 These layers share one root, but they are not the same dataset. During long runs,
 non-`dry-run` builds also write incremental snapshots under
-`.runtime/intermediate_runs/<run_id>/`.
+`.runtime/intermediate_runs/<run_id>/`. If a run crashes after ingest or
+extract, rerunning the same input/config automatically reuses the latest
+unfinished run and resumes from the persisted stage snapshots instead of
+starting extraction from scratch.
 
 ## How Parent/Child Skills Are Generated
 
@@ -145,7 +151,8 @@ single extraction step. It works in two layers:
      - bibliography / reference-heavy sections are skipped before extraction
    - `extract` produces `SupportRecord + SkillDraft`
    - `compile` turns drafts into `SkillSpec`
-   - `register_versions` retrieves top-k similar existing skills with hybrid embedding + BM25 scoring over metadata-rich skill text, then decides create / strengthen / revise / merge / split / unchanged before persisting registry state and lifecycle updates
+  - `register_versions` retrieves top-k similar existing skills with hybrid embedding + BM25 scoring over metadata-rich skill text, then decides create / strengthen / revise / merge / split / unchanged before persisting registry state and lifecycle updates
+  - retrieval texts, corpus vectors, and BM25 tokenized docs are persisted under `.runtime/store/document_skill_retrieval.json` and reused on the next run
 
 2. The visible domain/family tree is then projected for browsing/export
    - if final store skills are available, the visible family skills are rebuilt from the reconciled `Users/<internal_user>/...` store results
@@ -375,6 +382,8 @@ Notes:
 - `dry-run` runs ingest/extract/compile for inspection but does not write final registry/store/visible-tree results.
 - `diag` always runs in non-persisting dry-run mode.
 - non-`dry-run` `build` / `llm-extract` writes ingest/extract/compile/register snapshots to `.runtime/intermediate_runs/<run_id>/`.
+- the same non-`dry-run` build also persists retrieval texts/vectors/BM25 tokens under `.runtime/store/document_skill_retrieval.json`.
+- rerunning the same non-`dry-run` build input/config resumes the latest unfinished intermediate run automatically; already extracted documents are not extracted again.
 - `retrieve-hierarchy` now opens the family directly when the library contains only one visible family.
 - `canonical-merge` currently inspects staged results. When staging contains one unique bucket, it can infer `profile_id`, `family_name`, and `child_type`; otherwise pass them explicitly.
 - when `--family-name` is omitted, family resolution first uses configured aliases/keywords, then one constrained LLM classification pass, and finally falls back to the taxonomy's `default_family_name` instead of the first configured candidate.
