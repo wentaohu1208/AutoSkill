@@ -32,7 +32,7 @@ document
 
 - 独立 CLI：`autoskill4doc ...` 或 `python -m AutoSkill4Doc ...`
 - 基于 `content_hash` 的增量跳过
-- section 过滤、对话段裁剪、strict/recommended 窗口切分
+- section 过滤、strict/recommended 窗口切分
 - 规则优先的章节识别；当标题规则失效或识别出的结构明显过弱时，可触发一次 outline 级 LLM fallback
 - 支持 dry-run 和分阶段执行
 - 支持 provenance/change log/version history

@@ -32,7 +32,7 @@ Core layers:
 
 - standalone CLI: `autoskill4doc ...` or `python -m AutoSkill4Doc ...`
 - incremental skip by content hash
-- section filtering + dialogue-aware pruning + strict/recommended windowing
+- section filtering + strict/recommended windowing
 - rule-first section parsing with one optional outline-level LLM fallback when headings are missing or the recovered structure is too weak
 - dry-run and stage-by-stage execution
 - support-backed provenance and change logs
