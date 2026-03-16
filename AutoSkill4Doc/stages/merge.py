@@ -35,6 +35,7 @@ def canonical_merge_from_staging(
             "route": "canonical_merge",
             "profile_id": profile_id or None,
             "family_id": family_id or None,
+            "family_name": family_id or None,
             "child_type": child_type or None,
             "run_id": None,
             "skills": [],
@@ -71,6 +72,7 @@ def canonical_merge_from_staging(
         "route": "canonical_merge",
         "profile_id": profile_id or None,
         "family_id": family_id or None,
+        "family_name": family_id or None,
         "child_type": child_type or None,
         "run_id": resolved_run_id,
         "skills": list(canonical.get("skills") or []),
@@ -94,6 +96,7 @@ def available_merge_child_types(
         "route": "canonical_merge_buckets",
         "profile_id": profile_id or None,
         "family_id": family_id or None,
+        "family_name": family_id or None,
         "child_types": list(child_types or []),
         "errors": [],
     }

@@ -71,6 +71,12 @@ def _profile_id(skill: SkillSpec) -> str:
     return _metadata_value(skill, "profile_id")
 
 
+def _asset_node_id(skill: SkillSpec) -> str:
+    """Returns the configured hierarchical asset node id for one skill."""
+
+    return str(getattr(skill, "asset_node_id", "") or _metadata_value(skill, "asset_node_id")).strip()
+
+
 def skill_retrieval_text(skill: SkillSpec) -> str:
     """Builds one retrieval text that includes execution fields plus metadata."""
 
@@ -81,6 +87,9 @@ def skill_retrieval_text(skill: SkillSpec) -> str:
         f"Objective: {str(skill.objective or '').strip()}",
         f"Asset Type: {str(skill.asset_type or '').strip()}",
         f"Granularity: {str(skill.granularity or '').strip()}",
+        f"Asset Node: {_asset_node_id(skill)}",
+        f"Asset Path: {str(getattr(skill, 'asset_path', '') or _metadata_value(skill, 'asset_path')).strip()}",
+        f"Asset Level: {str(getattr(skill, 'asset_level', 0) or 0)}",
         f"Domain: {str(skill.domain or '').strip()}",
         f"Domain Type: {_domain_type(skill)}",
         f"Taxonomy ID: {_taxonomy_id(skill)}",
@@ -207,10 +216,124 @@ class DocumentSkillRetriever:
         candidate_taxonomy_id = normalize_text(_taxonomy_id(candidate), lower=True)
         candidate_profile_id = normalize_text(_profile_id(candidate), lower=True)
         candidate_family = normalize_text(_family_name(candidate), lower=True)
+        candidate_node = normalize_text(_asset_node_id(candidate), lower=True)
 
         for skill in self._skills.values():
             skill_id = str(skill.skill_id or "").strip()
             if not skill_id or skill_id in excluded:
+                continue
+            skill_domain = normalize_text(skill.domain, lower=True)
+            if candidate_domain and skill_domain and skill_domain != candidate_domain:
+                continue
+            skill_domain_type = normalize_text(_domain_type(skill), lower=True)
+            if candidate_domain_type and skill_domain_type and skill_domain_type != candidate_domain_type:
+                continue
+            skill_taxonomy_id = normalize_text(_taxonomy_id(skill), lower=True)
+            if candidate_taxonomy_id and skill_taxonomy_id and skill_taxonomy_id != candidate_taxonomy_id:
+                continue
+            skill_profile_id = normalize_text(_profile_id(skill), lower=True)
+            if candidate_profile_id and skill_profile_id and skill_profile_id != candidate_profile_id:
+                continue
+            skill_family = normalize_text(_family_name(skill), lower=True)
+            if candidate_family and skill_family and skill_family != candidate_family:
+                continue
+            skill_node = normalize_text(_asset_node_id(skill), lower=True)
+            if candidate_node and skill_node and skill_node != candidate_node:
+                if _granularity_rank(skill.granularity) >= _granularity_rank(candidate.granularity):
+                    continue
+            pool.append(skill)
+
+        if not pool:
+            return []
+
+        query = skill_retrieval_text(candidate)
+        docs = {skill.skill_id: self._texts.get(skill.skill_id) or skill_retrieval_text(skill) for skill in pool}
+        bm25_scores = bm25_normalized_scores(query=query, docs=docs)
+
+        vector_scores: Dict[str, float] = {}
+        use_vector = False
+        if self._vectors_available:
+            try:
+                qvec = self._embeddings.embed([query])[0]
+                qvec = [float(x) for x in list(qvec or [])]
+                use_vector = bool(qvec)
+            except Exception:
+                use_vector = False
+                qvec = []
+            if use_vector:
+                for skill in pool:
+                    skill_id = str(skill.skill_id or "").strip()
+                    vec = self._vectors.get(skill_id)
+                    if not vec:
+                        continue
+                    vector_scores[skill_id] = _dot(qvec, vec)
+
+        merged = blend_scores(
+            vector_scores=vector_scores,
+            bm25_scores=bm25_scores,
+            bm25_weight=self._bm25_weight,
+            use_vector=use_vector,
+        )
+        def boosted_score(item: SkillSpec) -> float:
+            score = float(merged.get(item.skill_id, 0.0))
+            if (
+                str(item.asset_type or "").strip() == str(candidate.asset_type or "").strip()
+                and str(item.granularity or "").strip() == str(candidate.granularity or "").strip()
+            ):
+                score += 0.15
+            if _asset_node_id(item) and _asset_node_id(item) == _asset_node_id(candidate):
+                score += 0.15
+            elif _granularity_rank(item.granularity) < _granularity_rank(candidate.granularity):
+                # Keep broader parent skills available for split detection.
+                score += 0.05
+            return score
+
+        ranked = sorted(pool, key=boosted_score, reverse=True)
+        hits: List[SkillRetrievalHit] = []
+        for skill in ranked[: max(1, int(limit or DEFAULT_RETRIEVAL_LIMIT))]:
+            skill_id = str(skill.skill_id or "").strip()
+            hits.append(
+                SkillRetrievalHit(
+                    skill=skill,
+                    score=float(boosted_score(skill)),
+                    vector_score=float(vector_scores.get(skill_id, 0.0)),
+                    bm25_score=float(bm25_scores.get(skill_id, 0.0)),
+                )
+            )
+        return hits
+
+    def search_parents(
+        self,
+        candidate: SkillSpec,
+        *,
+        allowed_parent_nodes: Optional[Iterable[str]] = None,
+        limit: int = 5,
+        exclude_ids: Optional[Iterable[str]] = None,
+    ) -> List[SkillRetrievalHit]:
+        """Returns top-k broader parent candidates for one child skill."""
+
+        excluded = {str(item or "").strip() for item in list(exclude_ids or []) if str(item or "").strip()}
+        allowed_nodes = {
+            normalize_text(str(item or "").strip(), lower=True)
+            for item in list(allowed_parent_nodes or [])
+            if str(item or "").strip()
+        }
+        target_level = max(1, int(getattr(candidate, "asset_level", 0) or 0) - 1)
+        pool: List[SkillSpec] = []
+        candidate_domain = normalize_text(candidate.domain, lower=True)
+        candidate_domain_type = normalize_text(_domain_type(candidate), lower=True)
+        candidate_taxonomy_id = normalize_text(_taxonomy_id(candidate), lower=True)
+        candidate_profile_id = normalize_text(_profile_id(candidate), lower=True)
+        candidate_family = normalize_text(_family_name(candidate), lower=True)
+
+        for skill in self._skills.values():
+            skill_id = str(skill.skill_id or "").strip()
+            if not skill_id or skill_id in excluded:
+                continue
+            if max(1, int(getattr(skill, "asset_level", 0) or 0)) != target_level:
+                continue
+            skill_node = normalize_text(_asset_node_id(skill), lower=True)
+            if allowed_nodes and skill_node not in allowed_nodes:
                 continue
             skill_domain = normalize_text(skill.domain, lower=True)
             if candidate_domain and skill_domain and skill_domain != candidate_domain:
@@ -260,26 +383,14 @@ class DocumentSkillRetriever:
             bm25_weight=self._bm25_weight,
             use_vector=use_vector,
         )
-        def boosted_score(item: SkillSpec) -> float:
-            score = float(merged.get(item.skill_id, 0.0))
-            if (
-                str(item.asset_type or "").strip() == str(candidate.asset_type or "").strip()
-                and str(item.granularity or "").strip() == str(candidate.granularity or "").strip()
-            ):
-                score += 0.15
-            elif _granularity_rank(item.granularity) < _granularity_rank(candidate.granularity):
-                # Keep broader parent skills available for split detection.
-                score += 0.05
-            return score
-
-        ranked = sorted(pool, key=boosted_score, reverse=True)
+        ranked = sorted(pool, key=lambda item: float(merged.get(item.skill_id, 0.0)), reverse=True)
         hits: List[SkillRetrievalHit] = []
-        for skill in ranked[: max(1, int(limit or DEFAULT_RETRIEVAL_LIMIT))]:
+        for skill in ranked[: max(1, int(limit or 5))]:
             skill_id = str(skill.skill_id or "").strip()
             hits.append(
                 SkillRetrievalHit(
                     skill=skill,
-                    score=float(boosted_score(skill)),
+                    score=float(merged.get(skill_id, 0.0)),
                     vector_score=float(vector_scores.get(skill_id, 0.0)),
                     bm25_score=float(bm25_scores.get(skill_id, 0.0)),
                 )

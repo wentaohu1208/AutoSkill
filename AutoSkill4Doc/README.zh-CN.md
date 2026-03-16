@@ -16,7 +16,7 @@ document
   -> extract_skills（SupportRecord + SkillDraft）
   -> compile_skills（SkillSpec）
   -> register_versions
-  -> registry + staging 快照 + 最终 SkillBank store + 可见父子技能树
+  -> registry + staging 快照 + 最终 SkillBank store + 可见领域/family/层级技能树
 ```
 
 核心分层：
@@ -37,7 +37,7 @@ document
 - 支持 dry-run 和分阶段执行
 - 支持 provenance/change log/version history
 - 支持生命周期状态：`candidate -> draft -> evaluating -> active -> watchlist -> deprecated -> retired`
-- 支持在文档技能库根目录下生成 `总技能/子技能/references` 可见树
+- 支持在文档技能库根目录下生成 `领域总技能 / Family技能 / 一级技能 / 二级技能 / 微技能 / references` 可见树
 - 非 `dry-run` 构建过程中会把中间结果写到 `.runtime/intermediate_runs/<run_id>/`
 - 支持通过内置或自定义 YAML 配置技能 taxonomy，`domain_type` 由调用方显式提供，不由模型预测
 
@@ -46,7 +46,7 @@ document
 - `.doc / .docx` 依赖本地转换工具，例如 `textutil`、`antiword`、`catdoc`
 - 图片、PDF 等当前不支持直接解析，会被跳过而不是作为乱码文本导入
 - `generic` LLM / embedding 后端需要显式设置 `AUTOSKILL_GENERIC_LLM_URL` / `AUTOSKILL_GENERIC_EMBED_URL`
-- 已导出的可见技能树产物（`总技能/`、`子技能/`、`references/`）在 ingest 时会被自动跳过，避免把生成后的技能再次当作原始文档抽取
+- 已导出的可见技能树产物（`总技能/`、`一级技能/`、`二级技能/`、`微技能/`、`Family技能/`、`references/`）在 ingest 时会被自动跳过，避免把生成后的技能再次当作原始文档抽取
 
 ## 默认路径
 
@@ -73,18 +73,43 @@ document
 ```text
 <store_root>/
   README.md
-  <family_name>/
+  <domain_root>/
     总技能/
       SKILL.md
       references/
-        children_manifest.json
-        children_map.md
-    子技能/
-      <child_name>/
-        SKILL.md
-        references/
-          evidence.md
-          evidence_manifest.json
+        domain_manifest.json
+    Family技能/
+      <family_name>/
+        总技能/
+          SKILL.md
+          references/
+            children_manifest.json
+            children_map.md
+        一级技能/
+          <skill_name>/
+            SKILL.md
+            references/
+              children_manifest.json
+              children_map.md
+              evidence.md
+              evidence_manifest.json
+        二级技能/
+          <skill_name>/
+            SKILL.md
+            references/
+              children_manifest.json
+              children_map.md
+              evidence.md
+              evidence_manifest.json
+        微技能/
+          <skill_name>/
+            SKILL.md
+            references/
+              evidence.md
+              evidence_manifest.json
+  Users/
+    docskill/
+      ...
   .runtime/
     document_registry/
     intermediate_runs/
@@ -98,8 +123,8 @@ document
    - 内部 document / support / skill / version 记录
 2. `Users/<internal_user>/`
    - 由已协调后的 `SkillSpec` 直接同步得到的最终 AutoSkill 本地 store 技能
-3. `<family_name>/`
-   - 面向浏览和导出的可见父子技能树投影
+3. `<domain_root>/`
+   - 面向浏览和导出的领域根、family 根以及 `一级技能 / 二级技能 / 微技能` 投影
 
 它们共用同一个根目录，但不是同一份数据。对于长任务，非 `dry-run`
 构建还会把阶段快照持续写到 `.runtime/intermediate_runs/<run_id>/`。
@@ -120,26 +145,29 @@ document
    - `compile` 负责把 draft 归一成 `SkillSpec`
    - `register_versions` 会先用带 metadata 的技能文本做 embedding + BM25 hybrid 检索，召回 top-k 相似旧技能，再判断 create / strengthen / revise / merge / split / unchanged，最后做 registry 持久化和版本状态处理
 
-2. 再把结果投影成可见父子结构
-   - 如果最终 store skill 已存在，可见子技能会优先按 `Users/<internal_user>/...` 里的最终技能重建
+2. 再把结果投影成可见 domain/family 树
+   - 如果最终 store skill 已存在，可见 family 技能会优先按 `Users/<internal_user>/...` 里的最终技能重建
    - 证据文件：`references/evidence.md` 和 `references/evidence_manifest.json` 仍由 registry 中关联的 `SupportRecord + DocumentRecord` 拼接
-   - 总技能：按同一个 `family_name` 下的全部子技能自动合成 `总技能/SKILL.md`
-   - 索引文件：同时生成 `children_manifest.json` 和 `children_map.md`
+   - 领域根：每个 `domain_root` 会合成一个领域总技能
+   - family 根：每个 `family_name` 会合成一个 family 总技能
+   - 一级/二级父技能：当存在已链接的子技能时，会在自身目录下生成嵌套 `children_manifest.json` 和 `children_map.md`
 
 这种实现的好处是：
 
 - 原始真相仍然保留在 registry 的 document / support / skill 层，不是只有一个最终 `SKILL.md`
-- `总技能` 只是导航层，不会反过来污染原始 skill 事实
+- 领域根和 family 根技能只是导航层，不会反过来污染原始 skill 事实
 - 子技能更新后，可以整体重建同一家族的可见树，避免目录漂移
 - 现在可见树会优先对齐最终 store skill，因此会尽量和 `Users/<internal_user>/...` 保持一致
+- 嵌套父技能可以附带子技能目录和选用规则，但底层 registry 真相层不变
 
 当前要稳定得到你想要的目录结构，最重要的是构建时显式传：
 
 - `--family-name`
 
-其中 `--family-name` 最关键，因为它直接决定顶层目录名，例如 `认知行为疗法/`。
+其中 `--family-name` 最关键，因为它直接决定 `<domain_root>/Family技能/` 下面的 family 子树名称。
 如果不传 `--profile-id`，系统会基于 taxonomy 和 `family_name` 自动派生；
 如果不传 `--taxonomy-axis`，则会优先使用 taxonomy 配置里的默认值。
+如果不传 `--family-name`，AutoSkill4Doc 会先尝试 taxonomy 规则命中，再对 `family_candidates` 做一次受约束的 LLM 分类。
 `--user-id` 现在只是内部 store 路由细节，不再是正常文档抽取流程里需要关心的主参数。
 如果省略，AutoSkill4Doc 会使用更中性的内部用户 id：`docskill`。
 
@@ -153,7 +181,7 @@ document
 - `safety_rule`
 - `knowledge_reference`
 
-在这层之上，可以通过 taxonomy 配置给出领域自己的标签和别名：
+在这层之上，可以通过 taxonomy 配置给出领域自己的标签、别名和层级节点树：
 
 - 内置 taxonomy：`--domain-type psychology` / `--domain-type chemistry`
 - 自定义 taxonomy：`--skill-taxonomy /path/to/taxonomy.yaml`
@@ -166,6 +194,8 @@ document
   - 默认 `family_name`
   - 默认 `taxonomy_axis`
   - family 候选集合（供后续受约束的 family 判定使用）
+  - `asset_tree`：层级节点树，例如 `总技能 -> 一级技能 -> 二级技能 -> 微技能`
+  - `visible_levels`：不同层级在可见目录中的默认标签
 
 示例：
 
@@ -198,6 +228,7 @@ taxonomy 的加载顺序是：
 - 最终解析后的结果会用于：
   - 抽取 prompt 的领域提示
   - `asset_type` 别名归一化
+  - `asset_node_id` 层级节点归一化
   - 默认 `family_name`
   - 默认 `taxonomy_axis`
   - 自动派生 `profile_id`
@@ -212,6 +243,12 @@ taxonomy 里几个最重要的字段：
 - `default_family_name`：默认 family 名称
 - `family_candidates`：可选 family 候选集合，供后续受约束判定使用
 - `asset_types`：领域标签到内部稳定 base type 的映射
+- `visible_levels`：`总技能 / 一级技能 / 二级技能 / 微技能` 这类可见层标签
+- `asset_tree`：配置驱动的层级技能节点树；模型可返回 `asset_node_id`，系统据此约束同级合并与后续父子链接
+
+`asset_types` 和 `asset_tree` 是两层不同概念：
+- `asset_types` 负责稳定粗类型，例如 `session_skill`、`micro_skill`
+- `asset_tree` 负责可见层级和父子结构，例如 `family_root -> 一级技能 -> 二级技能 -> 微技能`
 
 最小 taxonomy 示例：
 
@@ -226,11 +263,26 @@ family_candidates:
   - id: cbt
     name: CBT（认知行为疗法）
     aliases: ["CBT", "认知行为疗法", "cognitive behavioral therapy"]
+visible_levels:
+  root_label: 总技能
+  level_labels:
+    "1": 一级技能
+    "2": 二级技能
+    "3": 微技能
 asset_types:
   - base_type: session_skill
     label: session_intervention
     description: One counseling workflow or session scaffold.
     aliases: ["session_intervention", "session_skill"]
+asset_tree:
+  - id: session_framework
+    label_zh: 二级技能
+    label_en: Second-Level Skill
+    base_type: session_skill
+    level: 2
+    parent: treatment_framework
+    visible_role: parent
+    default_for_base_type: true
 ```
 
 其他配置入口：
@@ -268,15 +320,15 @@ provider 配置不是文件，而是环境变量。常用项包括：
 按当前版本来看，这个流程作为最小可运行版本是合理的：
 
 - 抽取主链路和可见目录生成解耦
-- `总技能/子技能` 是落盘投影，不是新的“真相层”
+- `领域总技能 / Family技能 / 分层技能` 是落盘投影，不是新的“真相层”
 - 重新同步目录时以最终 store 结果为主、以 registry 证据为辅，能避免人工目录漂移
 
 但它和 paper 目标相比，仍然是一个简化版：
 
-- 现在的 `总技能` 是基于当前有效子技能自动汇总出来的
+- 现在的领域根和 family 根技能是基于当前有效子技能自动汇总出来的
 - 还没有完整实现 paper 里的 `single-document standardization + canonical merge + parent synthesis` 全链路
 - 所以目录结构已经对齐了，但“子技能如何合并成 canonical child”的治理强度还没完全到 paper 那个版本
-- `.runtime/document_registry/` 里当前仍可能保留比最终 `Users/<internal_user>/...` 和 `<family_name>/...` 更多的内部 skill 记录
+- `.runtime/document_registry/` 里当前仍可能保留比最终 `Users/<internal_user>/...` 和 `<domain_root>/Family技能/<family_name>/...` 更多的内部 skill 记录
 
 如果你的当前优先级是“先保证输出长得对”，这版已经够用。  
 如果你的优先级是“保证和 paper 一样的归并质量”，下一步要继续补 canonical merge 那一段。
@@ -320,6 +372,8 @@ python3 -m AutoSkill4Doc build \
 - 非 `dry-run` 的 `build / llm-extract` 会把 ingest / extract / compile / register 的阶段快照写到 `.runtime/intermediate_runs/<run_id>/`。
 - 如果库里当前只存在一个可见 family，`retrieve-hierarchy` 会直接打开这棵 family 树，而不是先返回只有一项的 family 列表。
 - `canonical-merge` 当前用于查看 staging 结果。如果 staging 中只有一个唯一 bucket，会自动推导 `profile_id`、`family_name` 和 `child_type`；否则再显式传入。
+- 如果不传 `--family-name`，系统会先用 taxonomy 里的别名/关键词做规则判定，再做一次受约束的 LLM family 分类；如果证据仍然偏弱，就回退到 taxonomy 的 `default_family_name`，而不是候选列表中的第一个 family。
+- 如果同一批文档明显命中多个不同的 configured family，批次级 family 会回退到 taxonomy 默认 family；同时，文档级 family 元数据仍会保留在抽取出的 skill 上，后续 versioning 和可见树投影仍可继续利用这些更细的 family 线索。
 
 ## Python API
 
@@ -356,7 +410,8 @@ compiled = pipeline.compile_skills(
 - `extract.py` / `__main__.py`：独立包 CLI + API 入口
 - `pipeline.py`：分阶段编排
 - `ingest.py`：文档归一化与增量检测
-- `taxonomy.py`：内置/自定义 skill taxonomy 加载，以及 `family_name` / `profile_id` 解析
+- `taxonomy.py`：内置/自定义 skill taxonomy 加载，以及 domain/family/层级配置解析
+- `family_resolver.py`：基于 `family_candidates` 的受约束 family 判定
 - `document/file_loader.py`：目录/文件读取、转换兜底与生成产物跳过
 - `document/windowing.py`：section 过滤与 strict/recommended 窗口构造
 - `stages/extractor.py`：`DocumentRecord -> SupportRecord[] + SkillDraft[]`
@@ -367,7 +422,7 @@ compiled = pipeline.compile_skills(
 - `stages/migrate.py`：安全的 `.runtime` 布局准备与迁移检查
 - `store/versioning.py`：基于 skill identity 的版本与生命周期治理
 - `store/registry.py`：文件系统 registry 持久化
-- `store/visible_tree.py`：基于最终 store skill 与 registry 证据导出的可见 `总技能/子技能/references`
+- `store/visible_tree.py`：基于最终 store skill 与 registry 证据导出的可见 `领域总技能 / Family技能 / 一级技能 / 二级技能 / 微技能 / references`
 - `store/intermediate.py`：按运行批次持续写入 ingest/extract/compile/register 中间快照
 - `store/layout.py`：共享的 visible/runtime 路径约定
 - `store/staging.py`：canonical merge staging 读写辅助

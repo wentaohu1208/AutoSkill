@@ -29,20 +29,23 @@ def run_document_diag(
     extract_strategy: str = "recommended",
     report_path: str = "",
     report_limit: int = 0,
+    pre_ingested=None,
 ) -> Dict[str, Any]:
     """Runs a non-persisting diagnostic extraction pass over one document source."""
 
-    ingest_result = pipeline.ingest_document(
-        file_path=str(file_path or "").strip(),
-        title=str(title or "").strip(),
-        source_type=str(source_type or "").strip() or "document",
-        domain=str(domain or "").strip(),
-        metadata=dict(metadata or {}),
-        continue_on_error=bool(continue_on_error),
-        dry_run=True,
-        max_documents=int(max_documents or 0),
-        extract_strategy=str(extract_strategy or "").strip() or "recommended",
-    )
+    ingest_result = pre_ingested
+    if ingest_result is None:
+        ingest_result = pipeline.ingest_document(
+            file_path=str(file_path or "").strip(),
+            title=str(title or "").strip(),
+            source_type=str(source_type or "").strip() or "document",
+            domain=str(domain or "").strip(),
+            metadata=dict(metadata or {}),
+            continue_on_error=bool(continue_on_error),
+            dry_run=True,
+            max_documents=int(max_documents or 0),
+            extract_strategy=str(extract_strategy or "").strip() or "recommended",
+        )
     extracted_result = pipeline.extract_skills(documents=ingest_result.documents, windows=ingest_result.windows)
 
     support_rows: Dict[str, List[Dict[str, Any]]] = {}

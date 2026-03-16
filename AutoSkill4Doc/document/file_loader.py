@@ -68,7 +68,16 @@ _GENERATED_VISIBLE_TREE_FILES = {
     "children_map.md",
     "evidence.md",
     "evidence_manifest.json",
+    "domain_manifest.json",
     "library_manifest.json",
+}
+_GENERATED_VISIBLE_TREE_DIRS = {
+    "总技能",
+    "一级技能",
+    "二级技能",
+    "微技能",
+    "子技能",
+    "Family技能",
 }
 
 
@@ -150,7 +159,7 @@ def _looks_like_generated_visible_artifact(path: str) -> bool:
     if basename in _GENERATED_VISIBLE_TREE_FILES:
         return True
     parts_set = set(parts)
-    if basename == "SKILL.md" and ("总技能" in parts_set or "子技能" in parts_set):
+    if basename == "SKILL.md" and (_GENERATED_VISIBLE_TREE_DIRS & parts_set):
         return True
     if basename == "README.md":
         root_dir = os.path.dirname(abs_path)

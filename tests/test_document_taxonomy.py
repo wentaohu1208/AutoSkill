@@ -8,6 +8,7 @@ import unittest
 from autoskill.llm.mock import MockLLM
 
 from AutoSkill4Doc.document.windowing import build_windows_for_record
+from AutoSkill4Doc.family_resolver import build_document_family_resolver
 from AutoSkill4Doc.models import DocumentRecord, DocumentSection, TextSpan
 from AutoSkill4Doc.prompts import OFFLINE_CHANNEL_DOC, build_offline_extract_prompt
 from AutoSkill4Doc.stages.extractor import build_document_skill_extractor, extract_skills
@@ -62,6 +63,7 @@ class DocumentTaxonomyTest(unittest.TestCase):
         self.assertEqual(taxonomy.normalize_asset_type("reagent_safety_rule"), "safety_rule")
         self.assertEqual(taxonomy.resolve_axis_label(), "实验路线")
         self.assertEqual(taxonomy.resolve_family_name(), "通用化学流程")
+        self.assertEqual(taxonomy.resolve_asset_node(asset_type="safety_rule").node_id, "reagent_safety_rule_node")
 
     def test_psychology_taxonomy_uses_expected_family_candidates(self) -> None:
         taxonomy = load_skill_taxonomy(domain_type="psychology")
@@ -81,6 +83,131 @@ class DocumentTaxonomyTest(unittest.TestCase):
         self.assertIn("认知行为疗法", list(taxonomy.family_candidates[2].get("aliases") or []))
         self.assertIn("人本-存在主义", list(taxonomy.family_candidates[3].get("aliases") or []))
         self.assertIn("后现代主义", list(taxonomy.family_candidates[4].get("aliases") or []))
+        self.assertEqual(taxonomy.visible_root_label(), "总技能")
+        self.assertEqual(taxonomy.visible_level_label(1), "一级技能")
+        self.assertEqual(taxonomy.visible_level_label(2), "二级技能")
+        self.assertEqual(taxonomy.visible_level_label(3), "微技能")
+        self.assertEqual(taxonomy.resolve_asset_node(asset_type="session_skill").node_id, "session_framework")
+        self.assertEqual(taxonomy.resolve_asset_node(asset_type="micro_skill").node_id, "micro_intervention")
+        self.assertEqual(taxonomy.resolve_asset_node(asset_type="macro_protocol").node_id, "treatment_framework")
+        self.assertEqual(taxonomy.resolve_asset_node(asset_type="safety_rule").node_id, "safety_micro")
+        self.assertEqual(taxonomy.asset_path("micro_intervention"), "family_root/treatment_framework/session_framework/micro_intervention")
+
+    def test_builtin_taxonomies_expose_consistent_asset_tree_relationships(self) -> None:
+        for domain_type in ("default", "psychology", "chemistry"):
+            taxonomy = load_skill_taxonomy(domain_type=domain_type)
+            node_map = taxonomy.asset_node_map
+            self.assertTrue(node_map)
+            self.assertIn("family_root", node_map)
+            for node in taxonomy.asset_tree:
+                if node.parent:
+                    self.assertIn(node.parent, node_map)
+                    self.assertIn(node.node_id, list(node_map[node.parent].allowed_children or []))
+                for child_id in list(node.allowed_children or []):
+                    self.assertIn(child_id, node_map)
+
+    def test_builtin_taxonomies_expose_all_stable_base_asset_types(self) -> None:
+        expected = {
+            "macro_protocol",
+            "session_skill",
+            "micro_skill",
+            "safety_rule",
+            "knowledge_reference",
+        }
+        for domain_type in ("default", "psychology", "chemistry"):
+            taxonomy = load_skill_taxonomy(domain_type=domain_type)
+            actual = {item.base_type for item in taxonomy.asset_types}
+            self.assertEqual(actual, expected)
+
+    def test_family_resolver_prefers_configured_rule_match(self) -> None:
+        taxonomy = load_skill_taxonomy(domain_type="psychology")
+        resolver = build_document_family_resolver(taxonomy=taxonomy)
+        record = DocumentRecord(
+            doc_id="psych-doc-1",
+            source_type="markdown_document",
+            title="CBT automatic thought restructuring",
+            domain="psychology",
+            raw_text="# 自动思维\n使用 ABC 记录表识别自动思维，并布置认知重评作业。\n",
+            sections=[
+                DocumentSection(
+                    heading="自动思维",
+                    text="使用 ABC 记录表识别自动思维，并布置认知重评作业。",
+                    span=TextSpan(start=0, end=29),
+                )
+            ],
+            content_hash="psych-doc-1-hash",
+        )
+
+        resolved = resolver.resolve(documents=[record], metadata={})
+
+        self.assertEqual(resolved.family_id, "cbt")
+        self.assertEqual(resolved.family_name, "认知行为疗法")
+        self.assertEqual(resolved.source, "rule")
+        self.assertGreater(resolved.confidence, 0.5)
+
+    def test_family_resolver_uses_taxonomy_default_when_signal_is_weak(self) -> None:
+        taxonomy = load_skill_taxonomy(domain_type="psychology")
+        resolver = build_document_family_resolver(taxonomy=taxonomy)
+        record = DocumentRecord(
+            doc_id="psych-doc-weak",
+            source_type="markdown_document",
+            title="General counseling notes",
+            domain="psychology",
+            raw_text="This paper discusses broad counseling process factors without naming a specific school.",
+            sections=[],
+            content_hash="psych-doc-weak-hash",
+        )
+
+        resolved = resolver.resolve(documents=[record], metadata={})
+
+        self.assertEqual(resolved.family_name, "通用心理咨询")
+        self.assertEqual(resolved.family_id, "")
+        self.assertEqual(resolved.source, "default")
+
+    def test_family_resolver_keeps_default_family_id_when_default_matches_candidate(self) -> None:
+        payload = """
+{
+  "taxonomy_id": "demo_family",
+  "domain_type": "demo",
+  "display_name": "Demo",
+  "default_family_name": "通用流程",
+  "family_candidates": [
+    {
+      "id": "general_process",
+      "name": "General Process（通用流程）",
+      "visible_name": "通用流程",
+      "aliases": ["general process", "通用流程"]
+    },
+    {
+      "id": "specialized_process",
+      "name": "Specialized Process（专项流程）",
+      "visible_name": "专项流程",
+      "aliases": ["specialized process", "专项流程"]
+    }
+  ]
+}
+""".strip()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "taxonomy.yaml")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(payload)
+            taxonomy = load_skill_taxonomy(domain_type="demo", taxonomy_path=path)
+        resolver = build_document_family_resolver(taxonomy=taxonomy)
+        record = DocumentRecord(
+            doc_id="demo-doc-weak",
+            source_type="markdown_document",
+            title="General notes",
+            domain="demo",
+            raw_text="This text does not contain strong signals for a specific family.",
+            sections=[],
+            content_hash="demo-doc-weak-hash",
+        )
+
+        resolved = resolver.resolve(documents=[record], metadata={})
+
+        self.assertEqual(resolved.family_name, "通用流程")
+        self.assertEqual(resolved.family_id, "general_process")
+        self.assertEqual(resolved.source, "default")
 
     def test_custom_taxonomy_path_overrides_aliases(self) -> None:
         payload = """
@@ -151,5 +278,8 @@ class DocumentTaxonomyTest(unittest.TestCase):
         self.assertEqual(len(result.skill_drafts), 1)
         draft = result.skill_drafts[0]
         self.assertEqual(draft.asset_type, "session_skill")
+        self.assertEqual(draft.asset_node_id, "experiment_workflow")
+        self.assertEqual(draft.asset_level, 2)
+        self.assertEqual(draft.asset_path, "family_root/experiment_protocol/experiment_workflow")
         self.assertEqual(draft.metadata.get("domain_type"), "chemistry")
         self.assertEqual(draft.metadata.get("taxonomy_id"), "chemistry")

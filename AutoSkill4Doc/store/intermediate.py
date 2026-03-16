@@ -104,6 +104,17 @@ class IntermediateRunWriter:
             completed_stages=list(self._state.get("completed_stages") or []),
         )
 
+    def update_metadata(self, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Merges resolved run metadata into the persisted status payload."""
+
+        if not isinstance(metadata, dict) or not metadata:
+            return
+        current = dict(self._state.get("metadata") or {})
+        current.update(dict(metadata or {}))
+        self._state["metadata"] = current
+        self._state["updated_at"] = now_iso()
+        self._flush_state()
+
     def write_ingest(self, result: "DocumentIngestResult") -> None:
         """Writes the completed ingest snapshot."""
 

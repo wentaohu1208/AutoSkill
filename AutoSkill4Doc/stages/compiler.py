@@ -30,6 +30,7 @@ def _identity_key_for_skill(
     *,
     asset_type: str,
     granularity: str,
+    asset_node_id: str,
     objective: str,
     domain: str,
     task_family: str,
@@ -43,6 +44,7 @@ def _identity_key_for_skill(
         [
             normalize_text(asset_type, lower=True),
             normalize_text(granularity, lower=True),
+            normalize_text(asset_node_id, lower=True),
             normalize_text(objective, lower=True),
             normalize_text(domain, lower=True),
             normalize_text(task_family, lower=True),
@@ -169,6 +171,7 @@ def _group_key_for_draft(draft: SkillDraft) -> str:
     identity_key = _identity_key_for_skill(
         asset_type=draft.asset_type,
         granularity=draft.granularity,
+        asset_node_id=draft.asset_node_id,
         objective=draft.objective,
         domain=draft.domain,
         task_family=draft.task_family,
@@ -221,6 +224,10 @@ class LLMSkillCompiler:
                     "description": draft.description,
                     "asset_type": draft.asset_type,
                     "granularity": draft.granularity,
+                    "asset_node_id": draft.asset_node_id,
+                    "asset_path": draft.asset_path,
+                    "asset_level": draft.asset_level,
+                    "visible_role": draft.visible_role,
                     "objective": draft.objective,
                     "domain": draft.domain,
                     "task_family": draft.task_family,
@@ -267,7 +274,7 @@ class LLMSkillCompiler:
             "Task: consolidate support-backed document counseling assets into canonical reusable skills.\n"
             "Output ONLY strict JSON parseable by json.loads.\n"
             "Merge drafts only when they express the same reusable capability after de-duplication and abstraction.\n"
-            "Never merge drafts across different asset_type or granularity.\n"
+            "Never merge drafts across different asset_type, granularity, or asset_node_id.\n"
             "Keep distinct skills separate when objective, method, stage, or deliverable differs materially.\n"
             "Preserve multi-granularity outputs: macro_protocol, session_skill, micro_skill, safety_rule, knowledge_reference.\n"
             "Each output skill should stay single-goal, with one primary objective, one primary stage, and one primary method family.\n"
@@ -275,7 +282,7 @@ class LLMSkillCompiler:
             "Return JSON as {\"skills\": [...]}.\n"
             "Fields per skill:\n"
             "- name, description, prompt\n"
-            "- asset_type, granularity, objective\n"
+            "- asset_type, asset_node_id, granularity, objective\n"
             "- domain, task_family, method_family, stage\n"
             "- applicable_signals, intervention_moves, contraindications\n"
             "- triggers, workflow_steps, constraints, cautions, output_contract, examples, tags\n"
@@ -288,7 +295,7 @@ class LLMSkillCompiler:
         repair_system = (
             "You are a JSON output fixer for document skill compilation.\n"
             "Given DATA and DRAFT, output ONLY strict JSON: {\"skills\": [...]}.\n"
-            "Keep fields: name, description, prompt, asset_type, granularity, objective, domain, task_family, method_family, stage, applicable_signals, intervention_moves, contraindications, triggers, workflow_steps, constraints, cautions, output_contract, examples, tags, confidence, risk_class, support_ids, source_draft_ids, optional resources/files.\n"
+            "Keep fields: name, description, prompt, asset_type, asset_node_id, asset_path, asset_level, visible_role, granularity, objective, domain, task_family, method_family, stage, applicable_signals, intervention_moves, contraindications, triggers, workflow_steps, constraints, cautions, output_contract, examples, tags, confidence, risk_class, support_ids, source_draft_ids, optional resources/files.\n"
             "Do not add unsupported content.\n"
         )
         repaired_payload = (
@@ -308,6 +315,10 @@ class LLMSkillCompiler:
             return []
 
         out: List[SkillSpec] = []
+        default_asset_node_id = str(drafts[0].asset_node_id or "").strip() if drafts else ""
+        default_asset_path = str(drafts[0].asset_path or "").strip() if drafts else ""
+        default_asset_level = int(drafts[0].asset_level or 0) if drafts else 0
+        default_visible_role = str(drafts[0].visible_role or "").strip() if drafts else ""
         source_domain_types = dedupe_strings(
             [
                 str((draft.metadata or {}).get("domain_type") or "").strip()
@@ -322,6 +333,64 @@ class LLMSkillCompiler:
                 if str((draft.metadata or {}).get("taxonomy_id") or "").strip()
             ]
         )
+        source_family_names = dedupe_strings(
+            [
+                str((draft.metadata or {}).get("family_name") or (draft.metadata or {}).get("school_name") or "").strip()
+                for draft in drafts
+                if str((draft.metadata or {}).get("family_name") or (draft.metadata or {}).get("school_name") or "").strip()
+            ]
+        )
+        source_family_ids = dedupe_strings(
+            [
+                str((draft.metadata or {}).get("family_id") or "").strip()
+                for draft in drafts
+                if str((draft.metadata or {}).get("family_id") or "").strip()
+            ]
+        )
+        source_profile_ids = dedupe_strings(
+            [
+                str((draft.metadata or {}).get("profile_id") or "").strip()
+                for draft in drafts
+                if str((draft.metadata or {}).get("profile_id") or "").strip()
+            ]
+        )
+        source_domain_root_names = dedupe_strings(
+            [
+                str((draft.metadata or {}).get("domain_root_name") or "").strip()
+                for draft in drafts
+                if str((draft.metadata or {}).get("domain_root_name") or "").strip()
+            ]
+        )
+        source_domain_root_ids = dedupe_strings(
+            [
+                str((draft.metadata or {}).get("domain_root_id") or "").strip()
+                for draft in drafts
+                if str((draft.metadata or {}).get("domain_root_id") or "").strip()
+            ]
+        )
+        source_axes = dedupe_strings(
+            [
+                str((draft.metadata or {}).get("taxonomy_axis") or "").strip()
+                for draft in drafts
+                if str((draft.metadata or {}).get("taxonomy_axis") or "").strip()
+            ]
+        )
+        source_family_bucket_labels = dedupe_strings(
+            [
+                str((draft.metadata or {}).get("family_bucket_label") or "").strip()
+                for draft in drafts
+                if str((draft.metadata or {}).get("family_bucket_label") or "").strip()
+            ]
+        )
+        source_visible_levels = next(
+            (
+                dict((draft.metadata or {}).get("visible_levels") or {})
+                for draft in drafts
+                if isinstance((draft.metadata or {}).get("visible_levels"), dict)
+                and dict((draft.metadata or {}).get("visible_levels") or {})
+            ),
+            {},
+        )
         for raw_item in raw_skills:
             item = maybe_json_dict(raw_item)
             name = str(item.get("name") or "").strip()
@@ -331,6 +400,10 @@ class LLMSkillCompiler:
                 continue
             asset_type = str(item.get("asset_type") or "").strip() or "session_skill"
             granularity = str(item.get("granularity") or "").strip() or "session"
+            asset_node_id = str(item.get("asset_node_id") or default_asset_node_id).strip()
+            asset_path = str(item.get("asset_path") or default_asset_path).strip() or asset_node_id
+            asset_level = int(item.get("asset_level") or default_asset_level or 0)
+            visible_role = str(item.get("visible_role") or default_visible_role).strip()
             objective = str(item.get("objective") or description).strip()
             intervention_moves = _fallback_section_list(
                 item,
@@ -403,6 +476,11 @@ class LLMSkillCompiler:
                 skill_body=structured_prompt,
                 asset_type=asset_type,
                 granularity=granularity,
+                asset_node_id=asset_node_id,
+                asset_path=asset_path,
+                asset_level=asset_level,
+                visible_role=visible_role,
+                hierarchy_status="unresolved",
                 objective=objective,
                 domain=str(item.get("domain") or "").strip(),
                 task_family=str(item.get("task_family") or "").strip(),
@@ -441,6 +519,14 @@ class LLMSkillCompiler:
                     "confidence": clip_confidence(item.get("confidence"), default=0.75),
                     "domain_type": source_domain_types[0] if source_domain_types else "",
                     "taxonomy_id": source_taxonomy_ids[0] if source_taxonomy_ids else "",
+                    "family_name": source_family_names[0] if source_family_names else "",
+                    "family_id": source_family_ids[0] if source_family_ids else "",
+                    "profile_id": source_profile_ids[0] if source_profile_ids else "",
+                    "domain_root_name": source_domain_root_names[0] if source_domain_root_names else "",
+                    "domain_root_id": source_domain_root_ids[0] if source_domain_root_ids else "",
+                    "taxonomy_axis": source_axes[0] if source_axes else "",
+                    "family_bucket_label": source_family_bucket_labels[0] if source_family_bucket_labels else "",
+                    "visible_levels": source_visible_levels,
                 },
                 version="0.1.0",
                 status=target_state,
@@ -448,6 +534,7 @@ class LLMSkillCompiler:
             identity_key = _identity_key_for_skill(
                 asset_type=spec.asset_type,
                 granularity=spec.granularity,
+                asset_node_id=spec.asset_node_id,
                 objective=spec.objective,
                 domain=spec.domain,
                 task_family=spec.task_family,
@@ -526,6 +613,10 @@ def skill_spec_to_candidate(spec: SkillSpec) -> SkillCandidate:
             "skill_spec_id": spec.skill_id,
             "asset_type": spec.asset_type,
             "granularity": spec.granularity,
+            "asset_node_id": spec.asset_node_id,
+            "asset_path": spec.asset_path,
+            "asset_level": spec.asset_level,
+            "visible_role": spec.visible_role,
             "objective": spec.objective,
             "support_ids": list(spec.support_ids or []),
             "domain": spec.domain,

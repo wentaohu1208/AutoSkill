@@ -1,25 +1,31 @@
 """
-Visible parent/child skill tree writer for AutoSkill4Doc.
+Visible hierarchy tree writer for AutoSkill4Doc.
 
 This module does not replace the existing document registry or AutoSkill store.
 It adds a human-browsable layer under the document skill library root:
 
 <store_root>/
-  <family_name>/
+  <domain_root>/
     总技能/
       SKILL.md
       references/
-        children_manifest.json
-        children_map.md
-    子技能/
-      <child_name>/
-        SKILL.md
-        references/
-          evidence.md
-          evidence_manifest.json
+        domain_manifest.json
+    Family技能/
+      <family_name>/
+        总技能/
+          SKILL.md
+          references/
+            children_manifest.json
+            children_map.md
+        一级技能/
+          <skill_name>/SKILL.md
+        二级技能/
+          <skill_name>/SKILL.md
+        微技能/
+          <skill_name>/SKILL.md
 
-The implementation is intentionally minimal and derives this visible tree from
-the current registry state plus run metadata such as `family_name`.
+The current implementation derives this visible tree from the current registry
+state plus run metadata such as `domain_root_name` and `family_name`.
 """
 
 from __future__ import annotations
@@ -38,10 +44,15 @@ from autoskill.utils.time import now_iso
 from ..core.common import StageLogger, dedupe_strings, emit_stage_log, normalize_text
 from ..core.config import DEFAULT_DOC_SKILL_USER_ID
 from ..models import DocumentRecord, SkillSpec, SupportRecord, VersionState
+from ..taxonomy import list_builtin_skill_taxonomies, load_skill_taxonomy
 from .layout import (
-    family_children_visible_root,
-    family_parent_visible_root,
-    family_visible_root,
+    domain_parent_visible_root,
+    domain_visible_root,
+    family_bucket_root,
+    family_level_visible_root,
+    family_parent_visible_root_under_domain,
+    family_visible_root_under_domain,
+    safe_domain_name,
     safe_family_name,
     safe_visible_name,
 )
@@ -63,6 +74,8 @@ _ROOT_SKIP_DIRS = {
     "index",
     "__pycache__",
 }
+
+_FAMILY_BUCKET_FALLBACK = "Family技能"
 
 @dataclass
 class VisibleTreeSyncResult:
@@ -113,6 +126,22 @@ def sync_visible_skill_tree(
     os.makedirs(root_dir, exist_ok=True)
 
     metadata_map = dict(metadata or {})
+    domain_root_name = _domain_root_name(
+        metadata_map=metadata_map,
+        documents=documents,
+        skill_specs=skill_specs,
+    )
+    family_bucket_label = _family_bucket_label(metadata_map=metadata_map)
+    domain_dir = domain_visible_root(base_store_root=root_dir, domain_root_name=domain_root_name)
+    os.makedirs(domain_dir, exist_ok=True)
+    os.makedirs(
+        family_bucket_root(
+            base_store_root=root_dir,
+            domain_root_name=domain_root_name,
+            family_bucket_label=family_bucket_label,
+        ),
+        exist_ok=True,
+    )
     registry_documents = {doc.doc_id: doc for doc in registry.list_documents()}
     for document in documents or []:
         registry_documents[document.doc_id] = document
@@ -127,7 +156,12 @@ def sync_visible_skill_tree(
 
     explicit_family = str(metadata_map.get("family_name") or metadata_map.get("school_name") or "").strip()
     for family_name in families:
-        family_dir = family_visible_root(base_store_root=root_dir, family_name=family_name)
+        family_dir = family_visible_root_under_domain(
+            base_store_root=root_dir,
+            domain_root_name=domain_root_name,
+            family_name=family_name,
+            family_bucket_label=family_bucket_label,
+        )
         family_skills = [
             skill
             for skill in registry_skills
@@ -148,6 +182,8 @@ def sync_visible_skill_tree(
             child_paths, parent_path = _write_family_tree_from_store(
                 family_name=family_name,
                 family_dir=family_dir,
+                domain_root_name=domain_root_name,
+                family_bucket_label=family_bucket_label,
                 store_skills=projected_store_skills,
                 registry_skills=family_skills,
                 docs_by_id=registry_documents,
@@ -159,6 +195,8 @@ def sync_visible_skill_tree(
             child_paths, parent_path = _write_family_tree(
                 family_name=family_name,
                 family_dir=family_dir,
+                domain_root_name=domain_root_name,
+                family_bucket_label=family_bucket_label,
                 skills=family_skills,
                 docs_by_id=registry_documents,
                 supports_by_id=registry_supports,
@@ -174,6 +212,13 @@ def sync_visible_skill_tree(
         )
 
     manifest = _scan_library_manifest(root_dir)
+    _write_domain_root_tree(
+        store_root=root_dir,
+        domain_root_name=domain_root_name,
+        manifest=manifest,
+        metadata=metadata_map,
+        user_id=user_id,
+    )
     library_manifest_path = _write_json(
         os.path.join(root_dir, ".runtime", "library_manifest.json"),
         manifest,
@@ -196,8 +241,30 @@ def _select_store_skills_for_family(
     skills = [skill for skill in list(store_skills or []) if isinstance(skill, Skill)]
     if not skills:
         return []
+    desired_family = safe_family_name(family_name)
+    registry_ids = {
+        str(skill.skill_id or "").strip()
+        for skill in list(registry_family_skills or [])
+        if str(skill.skill_id or "").strip()
+    }
+    filtered = [
+        skill
+        for skill in skills
+        if _family_name_for_store_skill(skill) == desired_family
+        or str(getattr(getattr(skill, "source", None), "get", lambda *_: "")("skill_spec_id") or "").strip() in registry_ids
+        or str((getattr(skill, "source", {}) or {}).get("skill_spec_id") or "").strip() in registry_ids
+    ]
+    if filtered:
+        return filtered
+    has_family_signal = any(
+        _family_name_for_store_skill(skill)
+        or str((getattr(skill, "source", {}) or {}).get("skill_spec_id") or "").strip()
+        for skill in skills
+    )
     if explicit_family:
-        return skills
+        if not has_family_signal and len({str(_family_name_for_skill(skill, metadata={}) or "").strip() for skill in registry_family_skills}) <= 1:
+            return skills
+        return []
     if len({str(_family_name_for_skill(skill, metadata={}) or "").strip() for skill in registry_family_skills}) <= 1:
         return skills
     return []
@@ -222,6 +289,51 @@ def _affected_families(
     return dedupe_strings(names, lower=False)
 
 
+def _normalize_domain_root_candidate(value: str) -> str:
+    """Converts one raw domain hint into a visible domain-root label when possible."""
+
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    builtin = {str(item or "").strip() for item in list_builtin_skill_taxonomies()}
+    if raw not in builtin:
+        return raw
+    try:
+        taxonomy = load_skill_taxonomy(domain_type=raw)
+        if str(taxonomy.domain_type or "").strip() == raw:
+            return taxonomy.domain_root_name()
+    except Exception:
+        pass
+    return raw
+
+
+def _domain_root_name(
+    *,
+    metadata_map: Dict[str, Any],
+    documents: Sequence[DocumentRecord],
+    skill_specs: Sequence[SkillSpec],
+) -> str:
+    """Returns the configured visible domain root name for this run."""
+
+    for candidate in (
+        str(metadata_map.get("domain_root_name") or "").strip(),
+        str(metadata_map.get("domain") or "").strip(),
+        str(metadata_map.get("domain_type") or "").strip(),
+        *[str(document.domain or "").strip() for document in list(documents or []) if str(document.domain or "").strip()],
+        *[str(skill.domain or "").strip() for skill in list(skill_specs or []) if str(skill.domain or "").strip()],
+        "未分类领域",
+    ):
+        if candidate:
+            return safe_domain_name(_normalize_domain_root_candidate(candidate))
+    return safe_domain_name("未分类领域")
+
+
+def _family_bucket_label(*, metadata_map: Dict[str, Any]) -> str:
+    """Returns the configured family container label."""
+
+    return str(metadata_map.get("family_bucket_label") or _FAMILY_BUCKET_FALLBACK).strip() or _FAMILY_BUCKET_FALLBACK
+
+
 def _family_name_for_skill(skill: SkillSpec, *, metadata: Dict[str, Any]) -> str:
     skill_metadata = dict(getattr(skill, "metadata", {}) or {})
     candidates = [
@@ -238,6 +350,23 @@ def _family_name_for_skill(skill: SkillSpec, *, metadata: Dict[str, Any]) -> str
         if str(candidate or "").strip():
             return safe_family_name(candidate)
     return safe_family_name("未分类技能")
+
+
+def _family_name_for_store_skill(skill: Skill) -> str:
+    """Returns the normalized family name carried by one final store skill, if available."""
+
+    metadata = dict(getattr(skill, "metadata", {}) or {})
+    source = dict(getattr(skill, "source", {}) or {})
+    for candidate in (
+        str(metadata.get("family_name") or "").strip(),
+        str(metadata.get("school_name") or "").strip(),
+        str(metadata.get("taxonomy_class") or "").strip(),
+        str(source.get("family_name") or "").strip(),
+        str(source.get("taxonomy_class") or "").strip(),
+    ):
+        if candidate:
+            return safe_family_name(candidate)
+    return ""
 
 
 def _child_type_for_skill(skill: SkillSpec) -> str:
@@ -262,10 +391,198 @@ def _selector_terms_for_skill(skill: SkillSpec) -> List[str]:
     )[:16]
 
 
+def _coerced_asset_level(level: int) -> int:
+    """Normalizes visible levels so extracted skills stay inside positive buckets."""
+
+    try:
+        numeric = int(level or 0)
+    except Exception:
+        numeric = 0
+    return max(1, numeric)
+
+
+def _visible_level_label(*, asset_level: int, metadata: Dict[str, Any]) -> str:
+    """Returns the configured visible label for one skill level."""
+
+    raw_levels = dict((metadata or {}).get("visible_levels") or {})
+    level_labels = dict(raw_levels.get("level_labels") or {})
+    if not level_labels:
+        level_labels = {
+            str(key): str(value).strip()
+            for key, value in raw_levels.items()
+            if str(key).strip().isdigit() and str(value).strip()
+        }
+    fallback_labels = {"1": "一级技能", "2": "二级技能", "3": "微技能"}
+    return str(level_labels.get(str(asset_level)) or fallback_labels.get(str(asset_level)) or f"{asset_level}级技能").strip()
+
+
+def _relative_family_skill_path(
+    *,
+    domain_root_name: str,
+    family_bucket_label: str,
+    family_name: str,
+    level_label: str,
+    visible_name: str,
+) -> str:
+    """Builds one manifest-relative path for a visible family skill."""
+
+    return os.path.join(
+        safe_domain_name(domain_root_name),
+        safe_visible_name(family_bucket_label or _FAMILY_BUCKET_FALLBACK),
+        family_name,
+        safe_visible_name(level_label),
+        visible_name,
+        "SKILL.md",
+    ).replace(os.sep, "/")
+
+
+def _direct_family_children(child_entries: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Returns the level-1 family children used by the family root skill."""
+
+    entries = [dict(item) for item in list(child_entries or []) if isinstance(item, dict)]
+    if not entries:
+        return []
+    level_one = [item for item in entries if int(item.get("asset_level") or 0) == 1]
+    if level_one:
+        return level_one
+    min_level = min(max(1, int(item.get("asset_level") or 0)) for item in entries)
+    return [item for item in entries if max(1, int(item.get("asset_level") or 0)) == min_level]
+
+
+def _children_by_parent(child_entries: Sequence[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """Groups child entries by their resolved parent skill id."""
+
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for item in list(child_entries or []):
+        parent_skill_id = str(item.get("parent_skill_id") or "").strip()
+        if not parent_skill_id:
+            continue
+        out.setdefault(parent_skill_id, []).append(dict(item))
+    for items in out.values():
+        items.sort(key=lambda entry: (int(entry.get("asset_level") or 0), normalize_text(str(entry.get("name") or ""), lower=True)))
+    return out
+
+
+def _selector_level_label(child_entries: Sequence[Dict[str, Any]]) -> str:
+    """Returns the visible label used in one parent's selection-rules section."""
+
+    for item in list(child_entries or []):
+        level_label = str(item.get("level_label") or "").strip()
+        if level_label:
+            return level_label
+    return "下一级技能"
+
+
+def _build_nested_children_manifest(
+    *,
+    parent_name: str,
+    parent_skill_id: str,
+    child_entries: Sequence[Dict[str, Any]],
+    metadata: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Builds one manifest for a real level-1/2 parent skill."""
+
+    return {
+        "schema": "autoskill.document.parent_children_manifest.v1",
+        "generated_at": now_iso(),
+        "domain_root_name": str(metadata.get("domain_root_name") or "").strip(),
+        "family_name": str(metadata.get("family_name") or "").strip(),
+        "profile_id": str(metadata.get("profile_id") or "").strip(),
+        "taxonomy_axis": str(metadata.get("taxonomy_axis") or "").strip(),
+        "parent_skill_id": str(parent_skill_id or "").strip(),
+        "parent_name": str(parent_name or "").strip(),
+        "children": [dict(item) for item in list(child_entries or [])],
+    }
+
+
+def _render_nested_children_map(*, parent_name: str, child_entries: Sequence[Dict[str, Any]]) -> str:
+    """Renders one human-readable child map for a real level parent skill."""
+
+    lines = [f"# {parent_name} 子技能地图", "", "## 子技能列表", ""]
+    if not child_entries:
+        lines.append("- 当前没有已同步的直接子技能。")
+        return "\n".join(lines).strip() + "\n"
+    for item in child_entries:
+        name = str(item.get("name") or "未命名子技能").strip()
+        level_label = str(item.get("level_label") or "").strip()
+        relative_path = str(item.get("relative_path") or "").strip()
+        selector_terms = ", ".join(list(item.get("selector_terms") or [])[:5])
+        applicable_when = str(item.get("applicable_when") or "").strip()
+        prefix = f"- [{name}]({relative_path})" if relative_path else f"- {name}"
+        if level_label:
+            prefix += f" ｜ {level_label}"
+        lines.append(prefix)
+        if applicable_when:
+            lines.append(f"  - 适用：{applicable_when}")
+        if selector_terms:
+            lines.append(f"  - 线索：{selector_terms}")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _augment_nested_parent_skill(
+    *,
+    skill: Skill,
+    parent_name: str,
+    child_entries: Sequence[Dict[str, Any]],
+    metadata: Dict[str, Any],
+) -> Skill:
+    """Converts one visible skill artifact into a parent skill with child routing sections."""
+
+    selector_label = _selector_level_label(child_entries)
+    child_lines: List[str] = []
+    rule_lines: List[str] = []
+    for item in list(child_entries or []):
+        child_name = str(item.get("name") or "未命名子技能").strip()
+        child_path = str(item.get("relative_path") or "").strip()
+        applicable_when = str(item.get("applicable_when") or "").strip()
+        selector_terms = ", ".join(list(item.get("selector_terms") or [])[:5])
+        bullet = f"- [{child_name}]({child_path})" if child_path else f"- {child_name}"
+        if applicable_when:
+            bullet += f" ｜ 适用：{applicable_when}"
+        child_lines.append(bullet)
+        rule = f"- 当目标、阶段或方法更接近 `{child_name}` 时，优先调用它。"
+        if selector_terms:
+            rule += f" 线索：{selector_terms}"
+        rule_lines.append(rule)
+    child_block = "\n".join(child_lines) if child_lines else "- 当前没有已同步的直接子技能。"
+    rule_block = "\n".join(rule_lines) if rule_lines else "- 当前没有可用的下一级技能可供选择。"
+    existing = str(skill.instructions or "").strip()
+    addition = (
+        "## 子技能目录\n"
+        f"{child_block}\n\n"
+        f"## 选用规则（{selector_label}目录）\n"
+        f"{rule_block}"
+    )
+    skill.instructions = (existing + "\n\n" + addition).strip() if existing else addition
+    skill.tags = dedupe_strings(list(skill.tags or []) + ["kind:parent"], lower=False)
+    skill.metadata = {
+        **dict(skill.metadata or {}),
+        "child_skill_ids": [str(item.get("skill_id") or "").strip() for item in list(child_entries or []) if str(item.get("skill_id") or "").strip()],
+        "visible_role": "parent",
+    }
+    skill.files["references/children_manifest.json"] = json.dumps(
+        _build_nested_children_manifest(
+            parent_name=parent_name,
+            parent_skill_id=str(skill.id or "").strip(),
+            child_entries=child_entries,
+            metadata=metadata,
+        ),
+        ensure_ascii=False,
+        indent=2,
+    )
+    skill.files["references/children_map.md"] = _render_nested_children_map(
+        parent_name=parent_name,
+        child_entries=child_entries,
+    )
+    return skill
+
+
 def _write_family_tree(
     *,
     family_name: str,
     family_dir: str,
+    domain_root_name: str,
+    family_bucket_label: str,
     skills: Sequence[SkillSpec],
     docs_by_id: Dict[str, DocumentRecord],
     supports_by_id: Dict[str, SupportRecord],
@@ -273,14 +590,20 @@ def _write_family_tree(
     metadata: Dict[str, Any],
 ) -> Tuple[List[str], str]:
     os.makedirs(family_dir, exist_ok=True)
-    child_root = family_children_visible_root(base_store_root=os.path.dirname(family_dir), family_name=family_name)
-    parent_root = family_parent_visible_root(base_store_root=os.path.dirname(family_dir), family_name=family_name)
-    os.makedirs(child_root, exist_ok=True)
+    library_root = os.path.dirname(os.path.dirname(os.path.dirname(family_dir)))
+    parent_root = family_parent_visible_root_under_domain(
+        base_store_root=library_root,
+        domain_root_name=domain_root_name,
+        family_name=family_name,
+        family_bucket_label=family_bucket_label,
+    )
     os.makedirs(parent_root, exist_ok=True)
 
     child_entries: List[Dict[str, Any]] = []
     child_paths: List[str] = []
     used_names: Dict[str, int] = {}
+    skill_dirs: Dict[str, str] = {}
+    visible_skill_artifacts: Dict[str, Skill] = {}
 
     ordered_skills = sorted(
         skills,
@@ -292,7 +615,23 @@ def _write_family_tree(
     )
     for skill in ordered_skills:
         visible_name = _unique_visible_name(_safe_visible_name(skill.name), used_names)
-        relative_skill_path = os.path.join(family_name, "子技能", visible_name, "SKILL.md").replace(os.sep, "/")
+        asset_level = _coerced_asset_level(int(skill.asset_level or 0))
+        level_label = _visible_level_label(asset_level=asset_level, metadata=metadata)
+        child_root = family_level_visible_root(
+            base_store_root=library_root,
+            domain_root_name=domain_root_name,
+            family_name=family_name,
+            level_label=level_label,
+            family_bucket_label=family_bucket_label,
+        )
+        os.makedirs(child_root, exist_ok=True)
+        relative_skill_path = _relative_family_skill_path(
+            domain_root_name=domain_root_name,
+            family_bucket_label=family_bucket_label,
+            family_name=family_name,
+            level_label=level_label,
+            visible_name=visible_name,
+        )
         child_dir = os.path.join(child_root, visible_name)
         os.makedirs(child_dir, exist_ok=True)
 
@@ -324,6 +663,8 @@ def _write_family_tree(
             evidence_md=evidence_md,
         )
         _write_skill_dir(child_dir, child_skill)
+        skill_dirs[str(skill.skill_id or "").strip()] = child_dir
+        visible_skill_artifacts[str(skill.skill_id or "").strip()] = child_skill
         child_paths.append(os.path.join(child_dir, "SKILL.md"))
 
         child_entries.append(
@@ -332,6 +673,11 @@ def _write_family_tree(
                 "name": skill.name,
                 "description": skill.description,
                 "child_type": _child_type_for_skill(skill),
+                "asset_node_id": str(skill.asset_node_id or "").strip(),
+                "asset_path": str(skill.asset_path or "").strip(),
+                "asset_level": asset_level,
+                "parent_skill_id": str(skill.parent_skill_id or "").strip(),
+                "level_label": level_label,
                 "taxonomy_class": _taxonomy_class_for_skill(skill, family_name=family_name),
                 "applicable_when": skill.description or skill.objective,
                 "selector_terms": _selector_terms_for_skill(skill),
@@ -339,15 +685,31 @@ def _write_family_tree(
             }
         )
 
+    for parent_skill_id, nested_children in _children_by_parent(child_entries).items():
+        child_dir = skill_dirs.get(parent_skill_id)
+        parent_skill = visible_skill_artifacts.get(parent_skill_id)
+        if not child_dir or parent_skill is None:
+            continue
+        _write_skill_dir(
+            child_dir,
+            _augment_nested_parent_skill(
+                skill=parent_skill,
+                parent_name=str(parent_skill.name or "").strip(),
+                child_entries=nested_children,
+                metadata=metadata,
+            ),
+        )
+
+    direct_children = _direct_family_children(child_entries)
     parent_skill = _build_parent_skill_artifact(
         family_name=family_name,
-        child_entries=child_entries,
+        child_entries=direct_children,
         metadata=metadata,
         user_id=user_id,
     )
     children_manifest = _build_children_manifest(
         family_name=family_name,
-        child_entries=child_entries,
+        child_entries=direct_children,
         parent_skill_id=parent_skill.id,
         metadata=metadata,
     )
@@ -362,6 +724,8 @@ def _write_family_tree_from_store(
     *,
     family_name: str,
     family_dir: str,
+    domain_root_name: str,
+    family_bucket_label: str,
     store_skills: Sequence[Skill],
     registry_skills: Sequence[SkillSpec],
     docs_by_id: Dict[str, DocumentRecord],
@@ -372,14 +736,20 @@ def _write_family_tree_from_store(
     """Writes one visible family tree using final store skills as the child source."""
 
     os.makedirs(family_dir, exist_ok=True)
-    child_root = family_children_visible_root(base_store_root=os.path.dirname(family_dir), family_name=family_name)
-    parent_root = family_parent_visible_root(base_store_root=os.path.dirname(family_dir), family_name=family_name)
-    os.makedirs(child_root, exist_ok=True)
+    library_root = os.path.dirname(os.path.dirname(os.path.dirname(family_dir)))
+    parent_root = family_parent_visible_root_under_domain(
+        base_store_root=library_root,
+        domain_root_name=domain_root_name,
+        family_name=family_name,
+        family_bucket_label=family_bucket_label,
+    )
     os.makedirs(parent_root, exist_ok=True)
 
     child_entries: List[Dict[str, Any]] = []
     child_paths: List[str] = []
     used_names: Dict[str, int] = {}
+    skill_dirs: Dict[str, str] = {}
+    visible_skill_artifacts: Dict[str, Skill] = {}
 
     ordered_store_skills = sorted(
         [skill for skill in list(store_skills or []) if isinstance(skill, Skill)],
@@ -391,7 +761,23 @@ def _write_family_tree_from_store(
     )
     for store_skill in ordered_store_skills:
         visible_name = _unique_visible_name(_safe_visible_name(store_skill.name), used_names)
-        relative_skill_path = os.path.join(family_name, "子技能", visible_name, "SKILL.md").replace(os.sep, "/")
+        asset_level = _coerced_asset_level(int((store_skill.metadata or {}).get("asset_level") or 0))
+        level_label = _visible_level_label(asset_level=asset_level, metadata=metadata)
+        child_root = family_level_visible_root(
+            base_store_root=library_root,
+            domain_root_name=domain_root_name,
+            family_name=family_name,
+            level_label=level_label,
+            family_bucket_label=family_bucket_label,
+        )
+        os.makedirs(child_root, exist_ok=True)
+        relative_skill_path = _relative_family_skill_path(
+            domain_root_name=domain_root_name,
+            family_bucket_label=family_bucket_label,
+            family_name=family_name,
+            level_label=level_label,
+            visible_name=visible_name,
+        )
         child_dir = os.path.join(child_root, visible_name)
         os.makedirs(child_dir, exist_ok=True)
 
@@ -424,6 +810,8 @@ def _write_family_tree_from_store(
             evidence_md=evidence_md,
         )
         _write_skill_dir(child_dir, child_skill)
+        skill_dirs[str(store_skill.id or "").strip()] = child_dir
+        visible_skill_artifacts[str(store_skill.id or "").strip()] = child_skill
         child_paths.append(os.path.join(child_dir, "SKILL.md"))
 
         child_entries.append(
@@ -432,6 +820,11 @@ def _write_family_tree_from_store(
                 "name": str(store_skill.name or "").strip(),
                 "description": str(store_skill.description or "").strip(),
                 "child_type": _child_type_for_registry_matches(matched_registry_skills),
+                "asset_node_id": str((store_skill.metadata or {}).get("asset_node_id") or "").strip(),
+                "asset_path": str((store_skill.metadata or {}).get("asset_path") or "").strip(),
+                "asset_level": asset_level,
+                "parent_skill_id": str((store_skill.metadata or {}).get("parent_skill_id") or "").strip(),
+                "level_label": level_label,
                 "taxonomy_class": _taxonomy_class_for_registry_matches(matched_registry_skills, fallback=family_name),
                 "applicable_when": str(store_skill.description or "").strip(),
                 "selector_terms": dedupe_strings(
@@ -442,15 +835,31 @@ def _write_family_tree_from_store(
             }
         )
 
+    for parent_skill_id, nested_children in _children_by_parent(child_entries).items():
+        child_dir = skill_dirs.get(parent_skill_id)
+        parent_skill = visible_skill_artifacts.get(parent_skill_id)
+        if not child_dir or parent_skill is None:
+            continue
+        _write_skill_dir(
+            child_dir,
+            _augment_nested_parent_skill(
+                skill=parent_skill,
+                parent_name=str(parent_skill.name or "").strip(),
+                child_entries=nested_children,
+                metadata=metadata,
+            ),
+        )
+
+    direct_children = _direct_family_children(child_entries)
     parent_skill = _build_parent_skill_artifact(
         family_name=family_name,
-        child_entries=child_entries,
+        child_entries=direct_children,
         metadata=metadata,
         user_id=user_id,
     )
     children_manifest = _build_children_manifest(
         family_name=family_name,
-        child_entries=child_entries,
+        child_entries=direct_children,
         parent_skill_id=parent_skill.id,
         metadata=metadata,
     )
@@ -719,7 +1128,7 @@ def _build_parent_skill_artifact(
         "3. 调用对应子技能执行具体步骤、规则和输出格式。",
         "4. 最后输出所选子技能、选择理由、执行顺序与风险提示。",
         "",
-        "## 子技能目录",
+        "## 子技能目录（一级技能目录）",
     ]
     for item in child_entries:
         name = str(item.get("name") or "").strip()
@@ -730,7 +1139,7 @@ def _build_parent_skill_artifact(
             lines.append(f"- {name} ｜ 类型：{child_type} ｜ 适用条件：{detail}")
         else:
             lines.append(f"- {name} ｜ 适用条件：{detail}")
-    lines.extend(["", "## 选用规则"])
+    lines.extend(["", "## 选用规则（一级技能目录）"])
     for item in child_entries[:12]:
         name = str(item.get("name") or "").strip()
         selector_terms = [str(term).strip() for term in list(item.get("selector_terms") or []) if str(term).strip()]
@@ -783,12 +1192,111 @@ def _build_children_manifest(
     return {
         "schema": "autoskill.document.children_manifest.v2",
         "generated_at": now_iso(),
+        "domain_root_name": str(metadata.get("domain_root_name") or "").strip(),
         "family_name": family_name,
+        "family_id": str(metadata.get("family_id") or "").strip(),
         "profile_id": str(metadata.get("profile_id") or "").strip(),
         "taxonomy_axis": str(metadata.get("taxonomy_axis") or "").strip(),
         "parent_skill_id": parent_skill_id,
         "children": list(child_entries or []),
     }
+
+
+def _write_domain_root_tree(
+    *,
+    store_root: str,
+    domain_root_name: str,
+    manifest: Dict[str, Any],
+    metadata: Dict[str, Any],
+    user_id: str,
+) -> None:
+    """Writes the top-level domain navigation skill."""
+
+    domain_name = safe_domain_name(domain_root_name or "未分类领域")
+    domain_root_dir = domain_parent_visible_root(base_store_root=store_root, domain_root_name=domain_name)
+    os.makedirs(domain_root_dir, exist_ok=True)
+    families = [
+        dict(item)
+        for item in list(manifest.get("families") or [])
+        if str(item.get("domain_root_name") or "").strip() == domain_name
+    ]
+    domain_skill = _build_domain_root_skill_artifact(
+        domain_root_name=domain_name,
+        families=families,
+        metadata=metadata,
+        user_id=user_id,
+    )
+    domain_manifest = {
+        "schema": "autoskill.document.domain_manifest.v1",
+        "generated_at": now_iso(),
+        "domain_root_name": domain_name,
+        "profile_id": str(metadata.get("profile_id") or "").strip(),
+        "taxonomy_axis": str(metadata.get("taxonomy_axis") or "").strip(),
+        "family_bucket_label": str(metadata.get("family_bucket_label") or _FAMILY_BUCKET_FALLBACK).strip() or _FAMILY_BUCKET_FALLBACK,
+        "families": [
+            {
+                "family_name": str(item.get("family_name") or "").strip(),
+                "relative_root": str(item.get("relative_root") or "").strip(),
+                "parent_relative_path": str(item.get("parent_relative_path") or "").strip() or None,
+                "child_count": int(item.get("child_count") or 0),
+            }
+            for item in families
+        ],
+    }
+    domain_skill.files["references/domain_manifest.json"] = json.dumps(domain_manifest, ensure_ascii=False, indent=2)
+    _write_skill_dir(domain_root_dir, domain_skill)
+
+
+def _build_domain_root_skill_artifact(
+    *,
+    domain_root_name: str,
+    families: Sequence[Dict[str, Any]],
+    metadata: Dict[str, Any],
+    user_id: str,
+) -> Skill:
+    """Builds the visible domain-root navigation skill."""
+
+    domain_skill_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"autoskill4doc-domain:{domain_root_name}"))
+    lines: List[str] = [
+        "## Family目录",
+    ]
+    for item in list(families or []):
+        family_name = str(item.get("family_name") or "").strip()
+        parent_relative_path = str(item.get("parent_relative_path") or "").strip()
+        child_count = int(item.get("child_count") or 0)
+        if parent_relative_path:
+            lines.append(f"- [{family_name}]({parent_relative_path}) ｜ 已同步技能数：{child_count}")
+        else:
+            lines.append(f"- {family_name} ｜ 已同步技能数：{child_count}")
+    lines.extend(
+        [
+            "",
+            "## 选用规则（各 Family）",
+            "- 优先根据文档中明确的方法学术语、章节主题和任务目标进入对应 family。",
+            "- 当同一文档未显式指定 family 时，AutoSkill4Doc 会在配置的 family_candidates 中做受约束分类。",
+            "- 进入 family 后，再由 family 总技能继续选择一级、二级和微技能。",
+            "",
+            "## 输出格式",
+            "- domain_route:",
+            f"  - domain: {domain_root_name}",
+            "  - family: 选中的 family 名称",
+            "  - rationale: 说明为什么选择该 family",
+        ]
+    )
+    return Skill(
+        id=domain_skill_id,
+        user_id=user_id,
+        name=domain_root_name,
+        description=f"{domain_root_name} 的领域总导航技能：负责进入对应 family 的总路由。",
+        instructions="\n".join(lines).strip(),
+        triggers=dedupe_strings([domain_root_name, f"{domain_root_name} 总导航"], lower=False),
+        tags=dedupe_strings([domain_root_name, "kind:domain_root"] + _metadata_tags(metadata), lower=False),
+        version="0.1.0",
+        status=SkillStatus.ACTIVE,
+        files={},
+        source={"source_type": "document_domain_root_skill"},
+        metadata={"domain_root_name": domain_root_name, **dict(metadata or {})},
+    )
 
 
 def _build_evidence_manifest(
@@ -873,9 +1381,12 @@ def _render_children_map(*, family_name: str, child_entries: Sequence[Dict[str, 
     for idx, item in enumerate(child_entries, start=1):
         name = str(item.get("name") or "").strip()
         child_type = str(item.get("child_type") or "").strip()
+        level_label = str(item.get("level_label") or "").strip()
         relative_path = str(item.get("relative_path") or "").strip()
         applicable = str(item.get("applicable_when") or "").strip()
         lines.append(f"{idx}. [{name}]({relative_path})")
+        if level_label:
+            lines.append(f"   - 层级：{level_label}")
         if child_type:
             lines.append(f"   - 类型：{child_type}")
         if applicable:
@@ -885,17 +1396,20 @@ def _render_children_map(*, family_name: str, child_entries: Sequence[Dict[str, 
 
 
 def _scan_library_manifest(store_root: str) -> Dict[str, Any]:
+    domains: List[Dict[str, Any]] = []
     families: List[Dict[str, Any]] = []
     if os.path.isdir(store_root):
         for name in sorted(os.listdir(store_root)):
             if not name or name.startswith(".") or name in _ROOT_SKIP_DIRS:
                 continue
-            family_dir = os.path.join(store_root, name)
-            if not os.path.isdir(family_dir):
+            domain_dir = os.path.join(store_root, name)
+            if not os.path.isdir(domain_dir):
                 continue
-            family_entry = _scan_family_entry(store_root=store_root, family_name=name)
-            if family_entry is not None:
-                families.append(family_entry)
+            domain_entry = _scan_domain_entry(store_root=store_root, domain_root_name=name)
+            if domain_entry is None:
+                continue
+            domains.append(domain_entry)
+            families.extend(list(domain_entry.get("families") or []))
     profiles_map: Dict[str, Dict[str, Any]] = {}
     for family in families:
         profile_id = str(family.get("profile_id") or "").strip()
@@ -916,18 +1430,64 @@ def _scan_library_manifest(store_root: str) -> Dict[str, Any]:
             profile["active_family_name"] = str(family.get("family_name") or family.get("school_name") or "").strip() or None
     profiles = sorted(profiles_map.values(), key=lambda item: str(item.get("profile_id") or "").lower())
     return {
-        "schema": "autoskill.document.library_manifest.v1",
+        "schema": "autoskill.document.library_manifest.v2",
         "generated_at": now_iso(),
         "store_root": store_root,
+        "active_domain_root_name": str(domains[0].get("domain_root_name") or "").strip() if domains else None,
         "active_profile_id": str(profiles[0].get("profile_id") or "").strip() if profiles else None,
         "active_family_name": str(families[0].get("family_name") or "").strip() if families else None,
+        "domains": domains,
         "profiles": profiles,
         "families": families,
     }
 
 
-def _scan_family_entry(*, store_root: str, family_name: str) -> Optional[Dict[str, Any]]:
-    family_dir = os.path.join(store_root, family_name)
+def _scan_domain_entry(*, store_root: str, domain_root_name: str) -> Optional[Dict[str, Any]]:
+    domain_dir = os.path.join(store_root, domain_root_name)
+    if not os.path.isdir(domain_dir):
+        return None
+    parent_relative_path = ""
+    parent_skill_path = os.path.join(domain_dir, "总技能", "SKILL.md")
+    if os.path.isfile(parent_skill_path):
+        parent_relative_path = os.path.relpath(parent_skill_path, store_root).replace(os.sep, "/")
+    family_bucket_label = ""
+    families: List[Dict[str, Any]] = []
+    for name in sorted(os.listdir(domain_dir)):
+        if not name or name.startswith(".") or name in {"总技能"}:
+            continue
+        family_bucket_dir = os.path.join(domain_dir, name)
+        if not os.path.isdir(family_bucket_dir):
+            continue
+        family_bucket_label = name
+        for family_name in sorted(os.listdir(family_bucket_dir)):
+            family_entry = _scan_family_entry(
+                store_root=store_root,
+                domain_root_name=domain_root_name,
+                family_bucket_label=name,
+                family_name=family_name,
+            )
+            if family_entry is not None:
+                families.append(family_entry)
+    if not parent_relative_path and not families:
+        return None
+    return {
+        "domain_root_name": domain_root_name,
+        "relative_root": domain_root_name,
+        "parent_relative_path": parent_relative_path,
+        "family_bucket_label": family_bucket_label or _FAMILY_BUCKET_FALLBACK,
+        "family_count": len(families),
+        "families": families,
+    }
+
+
+def _scan_family_entry(
+    *,
+    store_root: str,
+    domain_root_name: str,
+    family_bucket_label: str,
+    family_name: str,
+) -> Optional[Dict[str, Any]]:
+    family_dir = os.path.join(store_root, domain_root_name, family_bucket_label, family_name)
     parent_relative_path = ""
     parent_skill_path = os.path.join(family_dir, "总技能", "SKILL.md")
     if os.path.isfile(parent_skill_path):
@@ -949,14 +1509,20 @@ def _scan_family_entry(*, store_root: str, family_name: str) -> Optional[Dict[st
         except Exception:
             children = []
     if not children:
-        child_root = os.path.join(family_dir, "子技能")
-        if os.path.isdir(child_root):
+        for level_name in sorted(os.listdir(family_dir)):
+            if level_name in {"总技能"} or level_name.startswith("."):
+                continue
+            child_root = os.path.join(family_dir, level_name)
+            if not os.path.isdir(child_root):
+                continue
             for name in sorted(os.listdir(child_root)):
                 md_path = os.path.join(child_root, name, "SKILL.md")
                 if os.path.isfile(md_path):
                     children.append(
                         {
                             "name": name,
+                            "asset_level": 0,
+                            "level_label": level_name,
                             "relative_path": os.path.relpath(md_path, store_root).replace(os.sep, "/"),
                         }
                     )
@@ -964,8 +1530,10 @@ def _scan_family_entry(*, store_root: str, family_name: str) -> Optional[Dict[st
     if not parent_relative_path and not children:
         return None
     return {
+        "domain_root_name": domain_root_name,
+        "family_bucket_label": family_bucket_label,
         "family_name": family_name,
-        "relative_root": family_name,
+        "relative_root": os.path.join(domain_root_name, family_bucket_label, family_name).replace(os.sep, "/"),
         "profile_id": profile_id,
         "taxonomy_axis": taxonomy_axis,
         "parent_relative_path": parent_relative_path,
@@ -975,6 +1543,7 @@ def _scan_family_entry(*, store_root: str, family_name: str) -> Optional[Dict[st
 
 
 def _render_library_readme(manifest: Dict[str, Any]) -> str:
+    domains = list(manifest.get("domains") or [])
     families = list(manifest.get("families") or [])
     lines = [
         "# DocSkill",
@@ -983,40 +1552,47 @@ def _render_library_readme(manifest: Dict[str, Any]) -> str:
         "",
         "## 结构",
         "",
-        "- `<family_name>/总技能/SKILL.md`：总导航技能",
-        "- `<family_name>/子技能/<名称>/SKILL.md`：子技能",
+        "- `<domain_root>/总技能/SKILL.md`：领域总导航技能",
+        "- `<domain_root>/Family技能/<family_name>/总技能/SKILL.md`：family 总导航技能",
+        "- `<domain_root>/Family技能/<family_name>/一级技能|二级技能|微技能/<名称>/SKILL.md`：分层技能",
         "- `.runtime/document_registry/`：离线文档 registry",
         "- `.runtime/library_manifest.json`：可见技能树索引",
         "",
         "## 生成逻辑",
         "",
         "1. 文档先经过 ingest / extract / compile / register_versions。",
-        "2. register_versions 持久化 registry 后，再把当前有效 skill 同步成可见父子树。",
-        "3. 子技能目录来自当前有效 SkillSpec；`references/evidence.*` 来自对应 SupportRecord 和 DocumentRecord。",
-        "4. 总技能不是再次抽取出来的独立文档，而是根据同一家族下当前所有子技能自动合成的导航技能。",
-        "5. `children_manifest.json` 提供机器可读索引，`children_map.md` 提供人读目录。",
+        "2. register_versions 持久化 registry 后，再把当前有效 skill 同步成领域 -> family -> 分层技能树。",
+        "3. 具体技能目录来自当前有效 SkillSpec/最终 store skill；`references/evidence.*` 来自对应 SupportRecord 和 DocumentRecord。",
+        "4. 领域总技能和 family 总技能不是再次抽取出来的独立文档，而是根据当前有效技能自动合成的导航技能。",
+        "5. `children_manifest.json` / `children_map.md` / `domain_manifest.json` 提供机器可读索引与人读目录。",
         "",
         "## 使用建议",
         "",
         "- 为了稳定得到期望目录名，建议在构建时显式传 `--family-name`。",
         "- 如需保留 profile / taxonomy 信息，建议同时传 `--profile-id` 和 `--taxonomy-axis`。",
-        "- 已导出的 `总技能/`、`子技能/`、`references/` 不应该再作为源文档回灌；ingest 会自动跳过这些生成产物。",
+        "- 已导出的 `总技能/`、`一级技能/`、`二级技能/`、`微技能/`、`references/` 不应该再作为源文档回灌；ingest 会自动跳过这些生成产物。",
         "",
-        "## 已同步家族",
+        "## 已同步领域",
         "",
     ]
-    if not families:
-        lines.append("- 暂无已同步家族")
+    if not domains:
+        lines.append("- 暂无已同步领域")
         lines.append("")
         return "\n".join(lines)
-    for item in families:
-        family_name = str(item.get("family_name") or item.get("school_name") or "").strip()
-        parent_relative_path = str(item.get("parent_relative_path") or "").strip()
-        child_count = int(item.get("child_count") or 0)
+    for domain in domains:
+        domain_name = str(domain.get("domain_root_name") or "").strip()
+        parent_relative_path = str(domain.get("parent_relative_path") or "").strip()
+        family_count = int(domain.get("family_count") or 0)
         if parent_relative_path:
-            lines.append(f"- [{family_name}]({parent_relative_path}) ({child_count} 子技能)")
+            lines.append(f"- [{domain_name}]({parent_relative_path}) ({family_count} family)")
         else:
-            lines.append(f"- {family_name} ({child_count} 子技能)")
+            lines.append(f"- {domain_name} ({family_count} family)")
+        for family in list(domain.get("families") or []):
+            family_name = str(family.get("family_name") or "").strip()
+            family_parent = str(family.get("parent_relative_path") or "").strip()
+            child_count = int(family.get("child_count") or 0)
+            prefix = f"  - [{family_name}]({family_parent})" if family_parent else f"  - {family_name}"
+            lines.append(f"{prefix} ({child_count} 技能)")
     lines.append("")
     return "\n".join(lines)
 

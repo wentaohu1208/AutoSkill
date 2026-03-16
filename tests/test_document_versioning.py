@@ -17,9 +17,9 @@ from AutoSkill4Doc.models import (
     VersionState,
 )
 from AutoSkill4Doc.store.registry import DocumentRegistry
-from AutoSkill4Doc.store.retrieval import build_document_skill_retriever
+from AutoSkill4Doc.store.retrieval import SkillRetrievalHit, build_document_skill_retriever
 from AutoSkill4Doc.store.visible_tree import sync_visible_skill_tree
-from AutoSkill4Doc.store.versioning import register_versions
+from AutoSkill4Doc.store.versioning import VersionManager, register_versions
 
 
 def _version_llm_response(*, system: str | None, user: str, temperature: float = 0.0, mode: str = "default") -> str:
@@ -157,6 +157,9 @@ class DocumentVersioningTest(unittest.TestCase):
         intervention_moves: list[str] | None = None,
         version: str = "0.1.0",
         status: VersionState = VersionState.ACTIVE,
+        asset_node_id: str = "",
+        asset_level: int = 0,
+        visible_role: str = "",
     ) -> SkillSpec:
         return SkillSpec(
             skill_id=skill_id,
@@ -165,6 +168,9 @@ class DocumentVersioningTest(unittest.TestCase):
             skill_body="# Goal\nSkill body",
             asset_type=asset_type,
             granularity=granularity,
+            asset_node_id=asset_node_id,
+            asset_level=asset_level,
+            visible_role=visible_role,
             objective=objective or f"{name} objective",
             domain=domain,
             task_family=task_family,
@@ -226,6 +232,85 @@ class DocumentVersioningTest(unittest.TestCase):
             self.assertEqual(result.skill_specs[0].version, "0.1.0")
             self.assertEqual(result.lifecycles[0].reason, "create")
             self.assertEqual(result.support_records[0].skill_id, result.skill_specs[0].skill_id)
+
+    def test_register_versions_preserves_skill_family_metadata_over_run_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = DocumentRegistry(root_dir=os.path.join(tmpdir, "registry"))
+            document = self._document(doc_id="doc-family")
+            support = self._support(support_id="sup-family", doc_id=document.doc_id, excerpt="Build rapport first.")
+            skill = self._skill(
+                skill_id="cand-family",
+                name="family specific intake",
+                workflow_steps=["Build rapport first."],
+                support_ids=[support.support_id],
+            )
+            skill.metadata.update(
+                {
+                    "family_name": "认知行为疗法",
+                    "family_id": "cbt",
+                    "profile_id": "psychology::认知行为疗法",
+                    "domain_root_name": "心理咨询",
+                }
+            )
+
+            result = self._register(
+                registry=registry,
+                documents=[document],
+                supports=[support],
+                skills=[skill],
+                metadata={
+                    "family_name": "通用心理咨询",
+                    "profile_id": "psychology::通用心理咨询",
+                    "domain_root_name": "心理咨询",
+                },
+            )
+
+            registered = result.skill_specs[0]
+            self.assertEqual(registered.metadata.get("family_name"), "认知行为疗法")
+            self.assertEqual(registered.metadata.get("family_id"), "cbt")
+            self.assertEqual(registered.metadata.get("profile_id"), "psychology::认知行为疗法")
+
+    def test_classify_parent_link_does_not_force_single_weak_parent_hit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = DocumentRegistry(root_dir=os.path.join(tmpdir, "registry"))
+            manager = VersionManager(registry=registry, llm=self._llm())
+            child = self._skill(
+                skill_id="child-weak",
+                name="苏格拉底式提问",
+                asset_type="micro_skill",
+                granularity="micro",
+                asset_node_id="micro_intervention",
+                asset_level=3,
+                visible_role="leaf",
+                workflow_steps=["提出证据问题。"],
+                support_ids=["sup-child"],
+                task_family="cognitive_restructuring",
+                method_family="cbt",
+                stage="session_work",
+            )
+            parent = self._skill(
+                skill_id="parent-weak",
+                name="危机转介规则",
+                asset_type="session_skill",
+                granularity="session",
+                asset_node_id="session_framework",
+                asset_level=2,
+                visible_role="parent",
+                workflow_steps=["评估危机。", "安排转介。"],
+                support_ids=["sup-parent"],
+                task_family="crisis",
+                method_family="safety",
+                stage="triage",
+            )
+
+            decision = manager.classify_parent_link(
+                child,
+                parent_hits=[SkillRetrievalHit(skill=parent, score=0.0, vector_score=0.0, bm25_score=0.0)],
+                allowed_parent_nodes=["session_framework"],
+            )
+
+            self.assertEqual(decision.get("decision"), "defer")
+            self.assertEqual(decision.get("parent_skill_id"), "")
 
     def test_same_skill_strengthens_existing_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -647,37 +732,11 @@ class DocumentVersioningTest(unittest.TestCase):
                 },
             )
 
-            parent_md = os.path.join(tmpdir, "认知行为疗法", "总技能", "SKILL.md")
-            children_manifest = os.path.join(
-                tmpdir,
-                "认知行为疗法",
-                "总技能",
-                "references",
-                "children_manifest.json",
-            )
-            child_md = os.path.join(
-                tmpdir,
-                "认知行为疗法",
-                "子技能",
-                "认知重构作业布置",
-                "SKILL.md",
-            )
-            evidence_md = os.path.join(
-                tmpdir,
-                "认知行为疗法",
-                "子技能",
-                "认知重构作业布置",
-                "references",
-                "evidence.md",
-            )
-            evidence_manifest = os.path.join(
-                tmpdir,
-                "认知行为疗法",
-                "子技能",
-                "认知重构作业布置",
-                "references",
-                "evidence_manifest.json",
-            )
+            parent_md = result.visible_tree["parent_paths"][0]
+            children_manifest = os.path.join(os.path.dirname(parent_md), "references", "children_manifest.json")
+            child_md = result.visible_tree["child_paths"][0]
+            evidence_md = os.path.join(os.path.dirname(child_md), "references", "evidence.md")
+            evidence_manifest = os.path.join(os.path.dirname(child_md), "references", "evidence_manifest.json")
             library_manifest = os.path.join(tmpdir, ".runtime", "library_manifest.json")
 
             self.assertTrue(os.path.isfile(parent_md))
@@ -704,7 +763,7 @@ class DocumentVersioningTest(unittest.TestCase):
             self.assertEqual(len(list(payload.get("children") or [])), 1)
             self.assertEqual(
                 payload["children"][0]["relative_path"],
-                "认知行为疗法/子技能/认知重构作业布置/SKILL.md",
+                os.path.relpath(child_md, tmpdir).replace(os.sep, "/"),
             )
 
             with open(evidence_md, "r", encoding="utf-8") as f:
@@ -714,6 +773,7 @@ class DocumentVersioningTest(unittest.TestCase):
 
             with open(library_manifest, "r", encoding="utf-8") as f:
                 manifest_payload = json.load(f)
+            self.assertEqual(manifest_payload.get("active_domain_root_name"), "心理咨询")
             self.assertEqual(manifest_payload.get("active_profile_id"), "test_therapy_v2")
             self.assertEqual(manifest_payload.get("active_family_name"), "认知行为疗法")
             self.assertEqual(manifest_payload["profiles"][0]["profile_id"], "test_therapy_v2")
@@ -743,8 +803,10 @@ class DocumentVersioningTest(unittest.TestCase):
             )
 
             self.assertEqual(result.visible_tree.get("affected_families"), ["Users-skills"])
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "Users-skills", "总技能", "SKILL.md")))
-            self.assertFalse(os.path.isfile(os.path.join(tmpdir, "Users", "总技能", "SKILL.md")))
+            parent_md = result.visible_tree["parent_paths"][0]
+            self.assertTrue(os.path.isfile(parent_md))
+            self.assertIn("/Users-skills/总技能/SKILL.md", parent_md.replace(os.sep, "/"))
+            self.assertNotIn("/Users/总技能/SKILL.md", parent_md.replace(os.sep, "/"))
 
     def test_visible_tree_prefers_store_final_skills_over_registry_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -803,7 +865,7 @@ class DocumentVersioningTest(unittest.TestCase):
             )
 
             self.assertEqual(result.affected_families, ["认知行为疗法"])
-            child_root = os.path.join(tmpdir, "认知行为疗法", "子技能")
+            child_root = os.path.dirname(os.path.dirname(result.child_paths[0]))
             child_dirs = sorted(name for name in os.listdir(child_root) if os.path.isdir(os.path.join(child_root, name)))
             self.assertEqual(len(child_dirs), 1)
             child_md = os.path.join(child_root, child_dirs[0], "SKILL.md")
@@ -874,18 +936,249 @@ class DocumentVersioningTest(unittest.TestCase):
             )
 
             self.assertEqual(result.affected_families, ["认知行为疗法"])
-            evidence_md = os.path.join(
-                tmpdir,
-                "认知行为疗法",
-                "子技能",
-                "结构化首次会谈框架（最终版）",
-                "references",
-                "evidence.md",
-            )
+            evidence_md = os.path.join(os.path.dirname(result.child_paths[0]), "references", "evidence.md")
             with open(evidence_md, "r", encoding="utf-8") as f:
                 evidence_text = f.read()
             self.assertIn("Use collaborative agenda setting", evidence_text)
             self.assertNotIn("different breathing exercise", evidence_text)
+
+    def test_visible_tree_filters_store_skills_to_requested_family(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = DocumentRegistry(root_dir=os.path.join(tmpdir, ".runtime", "document_registry"))
+            document = self._document(doc_id="doc-1", title="Family Filter")
+            support = self._support(
+                support_id="sup-cbt",
+                doc_id=document.doc_id,
+                excerpt="Use agenda-based CBT reframing.",
+            )
+            registry_skill = self._skill(
+                skill_id="cand-cbt",
+                name="认知重评会谈流程",
+                workflow_steps=["建立议程。", "识别自动想法。", "进行重评。", "总结与作业。"],
+                support_ids=[support.support_id],
+            )
+            registry_skill.metadata["family_name"] = "认知行为疗法"
+            registry.upsert_document(document)
+            registry.upsert_support(support)
+            registry.upsert_skill(registry_skill)
+
+            cbt_store = Skill(
+                id="store-cbt",
+                user_id="docskill",
+                name="认知重评会谈流程",
+                description="CBT final skill.",
+                instructions="# Goal\nUse CBT reframing.",
+                triggers=["认知重评"],
+                tags=["CBT"],
+                status=SkillStatus.ACTIVE,
+                version="0.1.0",
+                files={},
+                metadata={"family_name": "认知行为疗法"},
+                source={"source_type": "document_skill", "skill_spec_id": "cand-cbt"},
+            )
+            psychodynamic_store = Skill(
+                id="store-pd",
+                user_id="docskill",
+                name="移情解释",
+                description="Psychodynamic final skill.",
+                instructions="# Goal\nUse psychodynamic interpretation.",
+                triggers=["移情"],
+                tags=["Psychodynamic"],
+                status=SkillStatus.ACTIVE,
+                version="0.1.0",
+                files={},
+                metadata={"family_name": "Psychodynamic（心理动力学）"},
+                source={"source_type": "document_skill", "skill_spec_id": "cand-pd"},
+            )
+
+            result = sync_visible_skill_tree(
+                registry=registry,
+                store_root=tmpdir,
+                documents=[document],
+                support_records=[support],
+                skill_specs=[registry_skill],
+                user_id="docskill",
+                metadata={
+                    "family_name": "认知行为疗法",
+                    "profile_id": "test_therapy_v2",
+                    "taxonomy_axis": "疗法",
+                    "domain_root_name": "心理咨询",
+                },
+                store_skills=[cbt_store, psychodynamic_store],
+            )
+
+            child_root = os.path.dirname(os.path.dirname(result.child_paths[0]))
+            child_dirs = sorted(name for name in os.listdir(child_root) if os.path.isdir(os.path.join(child_root, name)))
+            self.assertEqual(["认知重评会谈流程"], child_dirs)
+
+    def test_register_versions_links_parent_and_child_skill_levels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = DocumentRegistry(root_dir=os.path.join(tmpdir, ".runtime", "document_registry"))
+            document = self._document(doc_id="doc-1", title="Hierarchical Tree")
+            support_parent = self._support(
+                support_id="sup-parent",
+                doc_id=document.doc_id,
+                excerpt="Run a structured first-session CBT framework with agenda setting and case focus.",
+            )
+            support_child = self._support(
+                support_id="sup-child",
+                doc_id=document.doc_id,
+                excerpt="Ask one Socratic question to challenge the client's automatic thought.",
+            )
+            parent_skill = self._skill(
+                skill_id="cand-parent",
+                name="结构化首次会谈框架",
+                asset_type="session_skill",
+                granularity="session",
+                asset_node_id="session_framework",
+                asset_level=2,
+                visible_role="parent",
+                workflow_steps=["建立议程。", "明确目标。", "聚焦自动想法。", "总结安排。"],
+                support_ids=[support_parent.support_id],
+            )
+            child_skill = self._skill(
+                skill_id="cand-child",
+                name="苏格拉底式提问",
+                asset_type="micro_skill",
+                granularity="micro",
+                asset_node_id="micro_intervention",
+                asset_level=3,
+                visible_role="leaf",
+                workflow_steps=["选定自动想法。", "提出证据问题。", "追问替代解释。", "总结结论。"],
+                support_ids=[support_child.support_id],
+            )
+
+            result = self._register(
+                registry=registry,
+                documents=[document],
+                supports=[support_parent, support_child],
+                skills=[parent_skill, child_skill],
+                metadata={
+                    "family_name": "认知行为疗法",
+                    "profile_id": "test_therapy_v2",
+                    "taxonomy_axis": "疗法",
+                    "domain_root_name": "心理咨询",
+                    "visible_levels": {"1": "一级技能", "2": "二级技能", "3": "微技能"},
+                },
+            )
+
+            linked_child = next(skill for skill in result.skill_specs if skill.skill_id == "cand-child")
+            self.assertEqual(linked_child.parent_skill_id, "cand-parent")
+            self.assertEqual(linked_child.hierarchy_status, "linked")
+
+            parent_md = os.path.join(
+                tmpdir,
+                "心理咨询",
+                "Family技能",
+                "认知行为疗法",
+                "二级技能",
+                "结构化首次会谈框架",
+                "SKILL.md",
+            )
+            child_manifest = os.path.join(
+                tmpdir,
+                "心理咨询",
+                "Family技能",
+                "认知行为疗法",
+                "二级技能",
+                "结构化首次会谈框架",
+                "references",
+                "children_manifest.json",
+            )
+            child_md = os.path.join(
+                tmpdir,
+                "心理咨询",
+                "Family技能",
+                "认知行为疗法",
+                "微技能",
+                "苏格拉底式提问",
+                "SKILL.md",
+            )
+            self.assertTrue(os.path.isfile(parent_md))
+            self.assertTrue(os.path.isfile(child_manifest))
+            self.assertTrue(os.path.isfile(child_md))
+
+            with open(parent_md, "r", encoding="utf-8") as f:
+                parent_text = f.read()
+            self.assertIn("## 子技能目录", parent_text)
+            self.assertIn("## 选用规则（微技能目录）", parent_text)
+            self.assertIn("苏格拉底式提问", parent_text)
+
+            with open(child_manifest, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            self.assertEqual(payload.get("parent_skill_id"), "cand-parent")
+            self.assertEqual(payload["children"][0]["name"], "苏格拉底式提问")
+
+    def test_register_versions_persists_child_links_on_existing_parent_across_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = DocumentRegistry(root_dir=os.path.join(tmpdir, ".runtime", "document_registry"))
+            parent_doc = self._document(doc_id="doc-parent", title="Parent Skill")
+            parent_support = self._support(
+                support_id="sup-parent",
+                doc_id=parent_doc.doc_id,
+                excerpt="Run a structured first-session CBT framework with agenda setting and case focus.",
+            )
+            parent_skill = self._skill(
+                skill_id="cand-parent",
+                name="结构化首次会谈框架",
+                asset_type="session_skill",
+                granularity="session",
+                asset_node_id="session_framework",
+                asset_level=2,
+                visible_role="parent",
+                workflow_steps=["建立议程。", "明确目标。", "聚焦自动想法。", "总结安排。"],
+                support_ids=[parent_support.support_id],
+            )
+
+            self._register(
+                registry=registry,
+                documents=[parent_doc],
+                supports=[parent_support],
+                skills=[parent_skill],
+                metadata={
+                    "family_name": "认知行为疗法",
+                    "profile_id": "test_therapy_v2",
+                    "taxonomy_axis": "疗法",
+                    "domain_root_name": "心理咨询",
+                },
+            )
+
+            child_doc = self._document(doc_id="doc-child", title="Child Skill")
+            child_support = self._support(
+                support_id="sup-child",
+                doc_id=child_doc.doc_id,
+                excerpt="Ask one Socratic question to challenge the client's automatic thought.",
+            )
+            child_skill = self._skill(
+                skill_id="cand-child",
+                name="苏格拉底式提问",
+                asset_type="micro_skill",
+                granularity="micro",
+                asset_node_id="micro_intervention",
+                asset_level=3,
+                visible_role="leaf",
+                workflow_steps=["选定自动想法。", "提出证据问题。", "追问替代解释。", "总结结论。"],
+                support_ids=[child_support.support_id],
+            )
+
+            result = self._register(
+                registry=registry,
+                documents=[child_doc],
+                supports=[child_support],
+                skills=[child_skill],
+                metadata={
+                    "family_name": "认知行为疗法",
+                    "profile_id": "test_therapy_v2",
+                    "taxonomy_axis": "疗法",
+                    "domain_root_name": "心理咨询",
+                },
+            )
+
+            linked_child = next(skill for skill in result.skill_specs if skill.skill_id == "cand-child")
+            self.assertEqual(linked_child.parent_skill_id, "cand-parent")
+            persisted_parent = registry.get_skill("cand-parent")
+            self.assertIsNotNone(persisted_parent)
+            self.assertIn("cand-child", list(getattr(persisted_parent, "child_skill_ids", []) or []))
 
     def test_store_sync_keeps_cross_asset_type_document_skills_separate(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

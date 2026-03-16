@@ -118,10 +118,12 @@ class DocumentFileLoaderTest(unittest.TestCase):
             source_path = os.path.join(tmpdir, "paper.md")
             generated_readme_path = os.path.join(tmpdir, "README.md")
             runtime_manifest_path = os.path.join(tmpdir, ".runtime", "library_manifest.json")
-            parent_skill_path = os.path.join(tmpdir, "认知行为疗法", "总技能", "SKILL.md")
-            child_skill_path = os.path.join(tmpdir, "认知行为疗法", "子技能", "认知重构", "SKILL.md")
+            parent_skill_path = os.path.join(tmpdir, "心理咨询", "Family技能", "认知行为疗法", "总技能", "SKILL.md")
+            child_skill_path = os.path.join(tmpdir, "心理咨询", "Family技能", "认知行为疗法", "二级技能", "认知重构", "SKILL.md")
             children_manifest_path = os.path.join(
                 tmpdir,
+                "心理咨询",
+                "Family技能",
                 "认知行为疗法",
                 "总技能",
                 "references",

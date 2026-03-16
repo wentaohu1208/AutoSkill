@@ -15,7 +15,7 @@ import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ..models import SkillSpec, VersionState
-from ..store.layout import library_manifest_path, normalize_library_root, safe_family_name, safe_visible_name
+from ..store.layout import library_manifest_path, normalize_library_root, safe_domain_name, safe_family_name, safe_visible_name
 from ..store.registry import DocumentRegistry
 
 _TOKEN_RE = re.compile(r"[a-z0-9_]+|[\u4e00-\u9fff]{1,4}", re.IGNORECASE)
@@ -58,6 +58,7 @@ def retrieve_hierarchy(
             "fallback": route,
             "profile_id": profile_key or None,
             "family_name": family_key or None,
+            "domain_root_name": None,
             "parent": None,
             "hits": [],
             "families": [],
@@ -72,6 +73,7 @@ def retrieve_hierarchy(
             "fallback": route,
             "profile_id": profile_key or str(chosen.get("profile_id") or "").strip() or None,
             "family_name": chosen["family_name"],
+            "domain_root_name": str(chosen.get("domain_root_name") or "").strip() or None,
             "parent": dict(chosen.get("parent") or {}),
             "hits": hits[: max(1, int(limit or 20))],
             "families": [],
@@ -84,12 +86,14 @@ def retrieve_hierarchy(
             "fallback": route,
             "profile_id": profile_key or (str(families[0].get("profile_id") or "").strip() or None if len(families) == 1 else None),
             "family_name": None,
+            "domain_root_name": str(families[0].get("domain_root_name") or "").strip() or None if len(families) == 1 else None,
             "parent": None,
             "hits": [],
             "families": [
                 {
                     "family_name": item["family_name"],
                     "relative_root": item.get("relative_root") or item["family_name"],
+                    "domain_root_name": str(item.get("domain_root_name") or "").strip() or None,
                     "child_count": len(list(item.get("children") or [])),
                     "parent_relative_path": (item.get("parent") or {}).get("relative_path"),
                 }
@@ -105,6 +109,7 @@ def retrieve_hierarchy(
             "fallback": route,
             "profile_id": profile_key or None,
             "family_name": family_key or None,
+            "domain_root_name": None,
             "parent": None,
             "hits": [],
             "families": [],
@@ -130,6 +135,7 @@ def retrieve_hierarchy(
         "fallback": route,
         "profile_id": profile_key or str(chosen.get("profile_id") or "").strip() or None,
         "family_name": chosen["family_name"],
+        "domain_root_name": str(chosen.get("domain_root_name") or "").strip() or None,
         "parent": dict(chosen.get("parent") or {}),
         "hits": hits,
         "families": [],
@@ -166,55 +172,71 @@ def _families_from_visible_scan(*, root: str, family_name: str) -> List[Dict[str
     if not os.path.isdir(root):
         return families
     want_name = str(family_name or "").strip().lower()
-    for name in sorted(os.listdir(root)):
-        if not name or name.startswith("."):
+    for domain_name in sorted(os.listdir(root)):
+        if not domain_name or domain_name.startswith("."):
             continue
-        family_dir = os.path.join(root, name)
-        if not os.path.isdir(family_dir):
+        domain_dir = os.path.join(root, domain_name)
+        if not os.path.isdir(domain_dir):
             continue
-        if want_name and name.lower() != want_name:
-            continue
-        parent_relative_path = ""
-        parent_path = os.path.join(family_dir, "总技能", "SKILL.md")
-        if os.path.isfile(parent_path):
-            parent_relative_path = os.path.relpath(parent_path, root).replace(os.sep, "/")
-        children: List[Dict[str, Any]] = []
-        manifest_path = os.path.join(family_dir, "总技能", "references", "children_manifest.json")
-        if os.path.isfile(manifest_path):
-            try:
-                with open(manifest_path, "r", encoding="utf-8") as f:
-                    payload = json.load(f)
-                raw_children = payload.get("children")
-                if isinstance(raw_children, list):
-                    children = [dict(item) for item in raw_children if isinstance(item, dict)]
-            except Exception:
-                children = []
-        if not children:
-            children_root = os.path.join(family_dir, "子技能")
-            if os.path.isdir(children_root):
-                for child_name in sorted(os.listdir(children_root)):
-                    md_path = os.path.join(children_root, child_name, "SKILL.md")
-                    if os.path.isfile(md_path):
-                        children.append(
-                            {
-                                "name": child_name,
-                                "description": "",
-                                "child_type": "",
-                                "taxonomy_class": "",
-                                "relative_path": os.path.relpath(md_path, root).replace(os.sep, "/"),
-                            }
-                        )
-        if not children and not parent_relative_path:
-            continue
-        families.append(
-            {
-                "family_name": name,
-                "relative_root": name,
-                "parent": {"name": name, "relative_path": parent_relative_path},
-                "children": children,
-                "terms": [name],
-            }
-        )
+        for family_bucket in sorted(os.listdir(domain_dir)):
+            if not family_bucket or family_bucket.startswith(".") or family_bucket == "总技能":
+                continue
+            family_bucket_dir = os.path.join(domain_dir, family_bucket)
+            if not os.path.isdir(family_bucket_dir):
+                continue
+            for name in sorted(os.listdir(family_bucket_dir)):
+                family_dir = os.path.join(family_bucket_dir, name)
+                if not os.path.isdir(family_dir):
+                    continue
+                if want_name and name.lower() != want_name:
+                    continue
+                parent_relative_path = ""
+                parent_path = os.path.join(family_dir, "总技能", "SKILL.md")
+                if os.path.isfile(parent_path):
+                    parent_relative_path = os.path.relpath(parent_path, root).replace(os.sep, "/")
+                children: List[Dict[str, Any]] = []
+                manifest_path = os.path.join(family_dir, "总技能", "references", "children_manifest.json")
+                if os.path.isfile(manifest_path):
+                    try:
+                        with open(manifest_path, "r", encoding="utf-8") as f:
+                            payload = json.load(f)
+                        raw_children = payload.get("children")
+                        if isinstance(raw_children, list):
+                            children = [dict(item) for item in raw_children if isinstance(item, dict)]
+                    except Exception:
+                        children = []
+                if not children:
+                    for level_name in sorted(os.listdir(family_dir)):
+                        if level_name in {"总技能"} or level_name.startswith("."):
+                            continue
+                        children_root = os.path.join(family_dir, level_name)
+                        if not os.path.isdir(children_root):
+                            continue
+                        for child_name in sorted(os.listdir(children_root)):
+                            md_path = os.path.join(children_root, child_name, "SKILL.md")
+                            if os.path.isfile(md_path):
+                                children.append(
+                                    {
+                                        "name": child_name,
+                                        "description": "",
+                                        "child_type": "",
+                                        "taxonomy_class": "",
+                                        "level_label": level_name,
+                                        "relative_path": os.path.relpath(md_path, root).replace(os.sep, "/"),
+                                    }
+                                )
+                if not children and not parent_relative_path:
+                    continue
+                families.append(
+                    {
+                        "domain_root_name": domain_name,
+                        "family_name": name,
+                        "relative_root": os.path.join(domain_name, family_bucket, name).replace(os.sep, "/"),
+                        "parent": {"name": name, "relative_path": parent_relative_path},
+                        "children": children,
+                        "terms": [name, domain_name],
+                    }
+                )
     return _normalize_family_entries(families)
 
 
@@ -234,9 +256,28 @@ def _families_from_runtime_registry(*, root: str, family_name: str) -> List[Dict
     for name, skills in sorted(grouped.items(), key=lambda item: item[0].lower()):
         if want_name and name.lower() != want_name:
             continue
+        domain_root_name = safe_domain_name(
+            str((skills[0].metadata or {}).get("domain_root_name") or skills[0].domain or "未分类领域").strip()
+        )
+        family_bucket = str((skills[0].metadata or {}).get("family_bucket_label") or "Family技能").strip() or "Family技能"
         children: List[Dict[str, Any]] = []
         for skill in sorted(skills, key=lambda item: (str(item.name or "").lower(), str(item.skill_id or ""))):
-            relative_path = os.path.join(name, "子技能", safe_visible_name(skill.name), "SKILL.md").replace(os.sep, "/")
+            raw_level = int((skill.metadata or {}).get("asset_level") or getattr(skill, "asset_level", 0) or 0)
+            if raw_level <= 1:
+                level_label = "一级技能"
+            elif raw_level == 2:
+                level_label = "二级技能"
+            else:
+                level_label = "微技能"
+            level_label = str((skill.metadata or {}).get("level_label") or level_label).strip() or level_label
+            relative_path = os.path.join(
+                domain_root_name,
+                family_bucket,
+                name,
+                safe_visible_name(level_label),
+                safe_visible_name(skill.name),
+                "SKILL.md",
+            ).replace(os.sep, "/")
             children.append(
                 {
                     "skill_id": skill.skill_id,
@@ -251,11 +292,15 @@ def _families_from_runtime_registry(*, root: str, family_name: str) -> List[Dict
         parent_relative_path = os.path.join(name, "总技能", "SKILL.md").replace(os.sep, "/")
         families.append(
             {
+                "domain_root_name": domain_root_name,
                 "family_name": name,
-                "relative_root": name,
-                "parent": {"name": name, "relative_path": parent_relative_path},
+                "relative_root": os.path.join(domain_root_name, family_bucket, name).replace(os.sep, "/"),
+                "parent": {
+                    "name": name,
+                    "relative_path": os.path.join(domain_root_name, family_bucket, name, "总技能", "SKILL.md").replace(os.sep, "/"),
+                },
                 "children": children,
-                "terms": [name],
+                "terms": [name, domain_root_name],
             }
         )
     return _normalize_family_entries(families)
@@ -302,6 +347,7 @@ def _normalize_family_entries(entries: Iterable[Dict[str, Any]]) -> List[Dict[st
         out.append(
             {
                 "family_name": family_name,
+                "domain_root_name": str(raw.get("domain_root_name") or "").strip(),
                 "relative_root": str(raw.get("relative_root") or family_name).strip() or family_name,
                 "profile_id": str(raw.get("profile_id") or "").strip(),
                 "taxonomy_axis": str(raw.get("taxonomy_axis") or "").strip(),

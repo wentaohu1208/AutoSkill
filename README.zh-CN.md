@@ -385,7 +385,7 @@ SkillBank/
 - 完整分阶段流程和配置说明见：[AutoSkill4Doc/README.zh-CN.md](AutoSkill4Doc/README.zh-CN.md)。
 
 - `autoskill/offline/conversation/extract.py`：导入 OpenAI 标准对话 `.json/.jsonl`（单文件或目录），并完成技能抽取与维护。
-- `AutoSkill4Doc/extract.py`：导入离线文档，生成总技能/子技能可见树，查看 staging 结果并浏览层级。
+- `AutoSkill4Doc/extract.py`：导入离线文档，生成 `领域总技能 / Family技能 / 一级技能 / 二级技能 / 微技能` 可见树，查看 staging 结果并浏览层级。
 - `autoskill/offline/trajectory/extract.py`：导入离线智能体轨迹并抽取流程型技能。
 
 Offline 调用示例（与 examples 一致，API key 通过 `export` 传入）：

@@ -16,9 +16,10 @@ from autoskill.llm.factory import build_llm
 from autoskill.models import Skill, SkillStatus
 from autoskill.utils.time import now_iso
 
-from ..core.common import StageLogger, emit_stage_log, summarize_names
+from ..core.common import StageLogger, emit_stage_log, normalize_text, summarize_names
 from ..core.config import DEFAULT_DOC_SKILL_USER_ID
 from ..core.llm_utils import (
+    clip_confidence,
     coerce_str_list,
     compact_text_list,
     llm_complete_json,
@@ -33,6 +34,7 @@ from ..models import (
     VersionState,
 )
 from ..stages.compiler import _build_structured_prompt, _coerce_examples
+from ..taxonomy import load_skill_taxonomy
 from .registry import DocumentRegistry
 from .retrieval import DEFAULT_RETRIEVAL_LIMIT, DocumentSkillRetriever, build_document_skill_retriever
 from .staging import plain_skill_specs, write_registration_staging
@@ -96,6 +98,48 @@ def _copy_skill(
     return SkillSpec.from_dict(payload)
 
 
+def _copy_skill_hierarchy(
+    skill: SkillSpec,
+    *,
+    parent_skill_id: Optional[str] = None,
+    parent_candidate_ids: Optional[List[str]] = None,
+    child_skill_ids: Optional[List[str]] = None,
+    hierarchy_confidence: Optional[float] = None,
+    hierarchy_status: Optional[str] = None,
+    visible_role: Optional[str] = None,
+) -> SkillSpec:
+    """Returns one skill copy with updated hierarchy fields."""
+
+    payload = skill.to_dict()
+    if parent_skill_id is not None:
+        payload["parent_skill_id"] = str(parent_skill_id or "").strip()
+    if parent_candidate_ids is not None:
+        payload["parent_candidate_ids"] = list(parent_candidate_ids or [])
+    if child_skill_ids is not None:
+        payload["child_skill_ids"] = list(child_skill_ids or [])
+    if hierarchy_confidence is not None:
+        payload["hierarchy_confidence"] = float(hierarchy_confidence or 0.0)
+    if hierarchy_status is not None:
+        payload["hierarchy_status"] = str(hierarchy_status or "").strip()
+    if visible_role is not None:
+        payload["visible_role"] = str(visible_role or "").strip()
+    md = dict(payload.get("metadata") or {})
+    if parent_skill_id is not None:
+        md["parent_skill_id"] = str(parent_skill_id or "").strip()
+    if parent_candidate_ids is not None:
+        md["parent_candidate_ids"] = list(parent_candidate_ids or [])
+    if child_skill_ids is not None:
+        md["child_skill_ids"] = list(child_skill_ids or [])
+    if hierarchy_confidence is not None:
+        md["hierarchy_confidence"] = float(hierarchy_confidence or 0.0)
+    if hierarchy_status is not None:
+        md["hierarchy_status"] = str(hierarchy_status or "").strip()
+    if visible_role is not None:
+        md["visible_role"] = str(visible_role or "").strip()
+    payload["metadata"] = md
+    return SkillSpec.from_dict(payload)
+
+
 def _copy_support(
     support: SupportRecord,
     *,
@@ -125,6 +169,16 @@ def _same_asset_layer(left: SkillSpec, right: SkillSpec) -> bool:
     )
 
 
+def _same_asset_node(left: SkillSpec, right: SkillSpec) -> bool:
+    """Checks whether two skills live under the same configured hierarchy node."""
+
+    left_node = str(getattr(left, "asset_node_id", "") or (left.metadata or {}).get("asset_node_id") or "").strip()
+    right_node = str(getattr(right, "asset_node_id", "") or (right.metadata or {}).get("asset_node_id") or "").strip()
+    if left_node and right_node:
+        return left_node == right_node
+    return True
+
+
 def _granularity_rank(value: str) -> int:
     """Maps granularity labels into a stable coarse-to-fine rank."""
 
@@ -151,6 +205,21 @@ def _doc_ids_from_support_ids(support_ids: Sequence[str], support_by_id: Dict[st
         seen.add(doc_id)
         out.append(doc_id)
     return out
+
+
+def _plausible_parent_candidate(child: SkillSpec, parent: SkillSpec, *, score: float) -> bool:
+    """Returns whether one parent hit is strong enough for automatic fallback attachment."""
+
+    if float(score or 0.0) >= 0.05:
+        return True
+    for field in ("task_family", "method_family", "stage"):
+        left = normalize_text(getattr(child, field, ""), lower=True)
+        right = normalize_text(getattr(parent, field, ""), lower=True)
+        if left and right and left == right:
+            return True
+    child_tokens = {token for token in normalize_text(f"{child.name} {child.objective}", lower=True).split() if token}
+    parent_tokens = {token for token in normalize_text(f"{parent.name} {parent.objective}", lower=True).split() if token}
+    return len(child_tokens & parent_tokens) >= 2
 
 
 def _conflicting_support_ids(support_ids: Sequence[str], support_by_id: Dict[str, SupportRecord]) -> List[str]:
@@ -199,6 +268,7 @@ class VersionRegistrationResult:
     documents: List[DocumentRecord] = field(default_factory=list)
     support_records: List[SupportRecord] = field(default_factory=list)
     skill_specs: List[SkillSpec] = field(default_factory=list)
+    hierarchy_updates: List[SkillSpec] = field(default_factory=list)
     lifecycles: List[SkillLifecycle] = field(default_factory=list)
     change_logs: List[Dict[str, Any]] = field(default_factory=list)
     version_history: List[Dict[str, Any]] = field(default_factory=list)
@@ -217,9 +287,14 @@ def _layout_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     family_name = str(md.get("family_name") or md.get("school_name") or "").strip()
     return {
         "family_name": family_name,
+        "family_id": str(md.get("family_id") or "").strip(),
         "profile_id": str(md.get("profile_id") or "").strip(),
         "taxonomy_axis": str(md.get("taxonomy_axis") or "").strip(),
         "taxonomy_class": str(md.get("taxonomy_class") or "").strip(),
+        "domain_root_name": str(md.get("domain_root_name") or "").strip(),
+        "domain_root_id": str(md.get("domain_root_id") or "").strip(),
+        "family_bucket_label": str(md.get("family_bucket_label") or "").strip(),
+        "visible_levels": dict(md.get("visible_levels") or {}) if isinstance(md.get("visible_levels"), dict) else {},
         "child_type": str(md.get("child_type") or "").strip(),
     }
 
@@ -234,7 +309,20 @@ def _merge_layout_metadata(
     layout_md = {key: value for key, value in _layout_metadata(metadata).items() if value}
     if not layout_md:
         return skill
-    return _copy_skill(skill, metadata_update=layout_md)
+    existing = dict(skill.metadata or {})
+    merged_update: Dict[str, Any] = {}
+    for key, value in layout_md.items():
+        current = existing.get(key)
+        if isinstance(current, dict) and current:
+            continue
+        if isinstance(current, list) and current:
+            continue
+        if str(current or "").strip():
+            continue
+        merged_update[key] = value
+    if not merged_update:
+        return skill
+    return _copy_skill(skill, metadata_update=merged_update)
 
 
 def _store_root_from_context(*, registry: DocumentRegistry, sdk: Optional[AutoSkill]) -> str:
@@ -266,8 +354,17 @@ def _store_metadata_for_skill(skill: SkillSpec, *, metadata: Optional[Dict[str, 
     merged.update(dict(skill.metadata or {}))
     merged["_autoskill_asset_type"] = str(skill.asset_type or "").strip()
     merged["_autoskill_granularity"] = str(skill.granularity or "").strip()
+    merged["_autoskill_asset_node_id"] = str(skill.asset_node_id or "").strip()
     merged["asset_type"] = str(skill.asset_type or "").strip()
     merged["granularity"] = str(skill.granularity or "").strip()
+    merged["asset_node_id"] = str(skill.asset_node_id or "").strip()
+    merged["asset_path"] = str(skill.asset_path or "").strip()
+    merged["asset_level"] = int(skill.asset_level or 0)
+    merged["parent_skill_id"] = str(skill.parent_skill_id or "").strip()
+    merged["child_skill_ids"] = list(skill.child_skill_ids or [])
+    merged["hierarchy_confidence"] = float(skill.hierarchy_confidence or 0.0)
+    merged["hierarchy_status"] = str(skill.hierarchy_status or "").strip()
+    merged["visible_role"] = str(skill.visible_role or "").strip()
     merged["source_type"] = "document_skill"
     return merged
 
@@ -280,6 +377,14 @@ def _store_source_for_skill(skill: SkillSpec) -> Dict[str, Any]:
         "skill_spec_id": skill.skill_id,
         "asset_type": skill.asset_type,
         "granularity": skill.granularity,
+        "asset_node_id": skill.asset_node_id,
+        "asset_path": skill.asset_path,
+        "asset_level": skill.asset_level,
+        "parent_skill_id": skill.parent_skill_id,
+        "child_skill_ids": list(skill.child_skill_ids or []),
+        "hierarchy_confidence": skill.hierarchy_confidence,
+        "hierarchy_status": skill.hierarchy_status,
+        "visible_role": skill.visible_role,
         "objective": skill.objective,
         "support_ids": list(skill.support_ids or []),
         "domain": skill.domain,
@@ -425,6 +530,10 @@ class VersionManager:
             "prompt": skill.skill_body,
             "asset_type": skill.asset_type,
             "granularity": skill.granularity,
+            "asset_node_id": skill.asset_node_id,
+            "asset_path": skill.asset_path,
+            "asset_level": skill.asset_level,
+            "visible_role": skill.visible_role,
             "objective": skill.objective,
             "domain": skill.domain,
             "task_family": skill.task_family,
@@ -507,6 +616,10 @@ class VersionManager:
             skill_body=structured_prompt,
             asset_type=str(item.get("asset_type") or fallback.asset_type).strip(),
             granularity=str(item.get("granularity") or fallback.granularity).strip(),
+            asset_node_id=str(item.get("asset_node_id") or fallback.asset_node_id).strip(),
+            asset_path=str(item.get("asset_path") or fallback.asset_path).strip(),
+            asset_level=int(item.get("asset_level", fallback.asset_level) or fallback.asset_level or 0),
+            visible_role=str(item.get("visible_role") or fallback.visible_role).strip(),
             objective=objective,
             domain=str(item.get("domain") or fallback.domain).strip(),
             task_family=str(item.get("task_family") or fallback.task_family).strip(),
@@ -570,7 +683,7 @@ class VersionManager:
             "- discard: do not persist candidate\n"
             "Rules:\n"
             "- Decide from semantic capability identity, not lexical similarity.\n"
-            "- Do not merge, strengthen, revise, or mark unchanged across different asset_type or granularity.\n"
+            "- Do not merge, strengthen, revise, or mark unchanged across different asset_type, granularity, or asset_node_id.\n"
             "- Treat macro_protocol, session_skill, micro_skill, safety_rule, and knowledge_reference as different asset layers unless there is an explicit split relationship.\n"
             "- Use peer_candidates to detect split cases where multiple narrower candidates replace one broad existing skill.\n"
             "- Use support conflict evidence to avoid preserving outdated or unsafe guidance.\n"
@@ -614,6 +727,10 @@ class VersionManager:
                 action = "create"
                 matched = []
                 reason = "create (cross-layer merge blocked)"
+            elif any(not _same_asset_node(resolved, existing) for existing in matched_existing):
+                action = "create"
+                matched = []
+                reason = "create (cross-node merge blocked)"
         if action == "split" and matched_existing:
             parent = matched_existing[0]
             if _granularity_rank(resolved.granularity) <= _granularity_rank(parent.granularity):
@@ -627,6 +744,220 @@ class VersionManager:
             reason=reason,
             split_parent_id=(matched[0] if action == "split" and matched else ""),
         )
+
+    def _taxonomy_for_skill(self, skill: SkillSpec) -> Any:
+        """Loads the configured taxonomy used by one persisted skill."""
+
+        md = dict(skill.metadata or {})
+        requested_path = str(md.get("skill_taxonomy_path") or md.get("skill_taxonomy") or "").strip()
+        requested_domain = str(md.get("domain_type") or skill.domain or "").strip()
+        try:
+            return load_skill_taxonomy(domain_type=requested_domain, taxonomy_path=requested_path)
+        except Exception:
+            return load_skill_taxonomy()
+
+    def classify_parent_link(
+        self,
+        child: SkillSpec,
+        *,
+        parent_hits: Sequence[Any],
+        allowed_parent_nodes: Sequence[str],
+    ) -> Dict[str, Any]:
+        """Chooses one parent candidate for a skill using constrained LLM + safe fallback."""
+
+        hits = [item for item in list(parent_hits or []) if getattr(item, "skill", None) is not None]
+        if not hits:
+            return {"decision": "defer", "parent_skill_id": "", "confidence": 0.0, "reason": "no parent candidates"}
+
+        payload = {
+            "child_skill": {
+                "skill_id": child.skill_id,
+                "name": child.name,
+                "asset_type": child.asset_type,
+                "asset_node_id": child.asset_node_id,
+                "asset_level": child.asset_level,
+                "objective": child.objective,
+                "workflow_steps": list(child.workflow_steps or []),
+                "constraints": list(child.constraints or []),
+                "triggers": list(child.triggers or []),
+            },
+            "allowed_parent_nodes": list(allowed_parent_nodes or []),
+            "parent_candidates": [
+                {
+                    "skill_id": hit.skill.skill_id,
+                    "name": hit.skill.name,
+                    "asset_node_id": hit.skill.asset_node_id,
+                    "asset_level": hit.skill.asset_level,
+                    "objective": hit.skill.objective,
+                    "workflow_steps": list(hit.skill.workflow_steps or [])[:6],
+                    "score": float(getattr(hit, "score", 0.0) or 0.0),
+                }
+                for hit in hits[:5]
+            ],
+        }
+        system = (
+            "You are AutoSkill4Doc's hierarchy linker.\n"
+            "Task: attach one child skill to the best broader parent candidate.\n"
+            "Rules:\n"
+            "- Choose ONLY one parent_skill_id from parent_candidates when a clear broader parent exists.\n"
+            "- Parent must be a broader reusable skill that should call or contain the child skill.\n"
+            "- If no parent is clearly suitable, return decision=defer.\n"
+            "- Do not invent ids.\n"
+            "Return ONLY strict JSON:\n"
+            "{\n"
+            '  "decision": "attach"|"defer",\n'
+            '  "parent_skill_id": "candidate-id-or-empty",\n'
+            '  "confidence": 0.0,\n'
+            '  "reason": "short reason"\n'
+            "}\n"
+        )
+        repair_system = (
+            "You are a JSON fixer for AutoSkill4Doc hierarchy linking.\n"
+            "Return ONLY strict JSON with decision, parent_skill_id, confidence, reason.\n"
+        )
+        repaired_payload = f"DATA:\n{json.dumps(payload, ensure_ascii=False)}\n\nDRAFT:\n__DRAFT__"
+        parsed = llm_complete_json(
+            llm=self.llm,
+            system=system,
+            payload=payload,
+            repair_system=repair_system,
+            repair_payload=repaired_payload,
+        )
+        obj = maybe_json_dict(parsed)
+        decision = str(obj.get("decision") or "").strip().lower()
+        parent_skill_id = str(obj.get("parent_skill_id") or "").strip()
+        confidence = clip_confidence(obj.get("confidence"), default=0.0)
+        reason = str(obj.get("reason") or "").strip()
+        valid_ids = {str(hit.skill.skill_id or "").strip() for hit in hits}
+        if decision == "attach" and parent_skill_id in valid_ids:
+            return {
+                "decision": "attach",
+                "parent_skill_id": parent_skill_id,
+                "confidence": confidence,
+                "reason": reason or "llm hierarchy attachment",
+            }
+
+        # Safe fallback: if there is exactly one candidate, or one clearly outranks the rest, use it.
+        if len(hits) == 1 and _plausible_parent_candidate(child, hits[0].skill, score=float(hits[0].score or 0.0)):
+            return {
+                "decision": "attach",
+                "parent_skill_id": str(hits[0].skill.skill_id or "").strip(),
+                "confidence": max(confidence, 0.6),
+                "reason": reason or "single eligible parent candidate",
+            }
+        if (
+            len(hits) >= 2
+            and float(hits[0].score or 0.0) >= float(hits[1].score or 0.0) + 0.15
+            and _plausible_parent_candidate(child, hits[0].skill, score=float(hits[0].score or 0.0))
+        ):
+            return {
+                "decision": "attach",
+                "parent_skill_id": str(hits[0].skill.skill_id or "").strip(),
+                "confidence": max(confidence, 0.55),
+                "reason": reason or "top parent candidate clearly outranks remaining hits",
+            }
+        return {"decision": "defer", "parent_skill_id": "", "confidence": 0.0, "reason": reason or "no confident parent"}
+
+    def link_hierarchy(
+        self,
+        *,
+        skills: Sequence[SkillSpec],
+        existing_skills: Sequence[SkillSpec],
+    ) -> Tuple[List[SkillSpec], List[SkillSpec]]:
+        """Assigns parent-child links and returns current skills plus touched existing parents."""
+
+        current = [skill for skill in list(skills or []) if isinstance(skill, SkillSpec)]
+        if not current:
+            return [], []
+
+        corpus_by_id: Dict[str, SkillSpec] = {}
+        for skill in list(existing_skills or []):
+            if skill.status in {VersionState.DEPRECATED, VersionState.RETIRED}:
+                continue
+            corpus_by_id[skill.skill_id] = skill
+        for skill in current:
+            if skill.status in {VersionState.DEPRECATED, VersionState.RETIRED}:
+                continue
+            corpus_by_id[skill.skill_id] = skill
+
+        hierarchy_retriever = build_document_skill_retriever()
+        hierarchy_retriever.refresh(list(corpus_by_id.values()))
+
+        updated: Dict[str, SkillSpec] = {}
+        touched_existing: Dict[str, SkillSpec] = {}
+        for skill in current:
+            if skill.status in {VersionState.DEPRECATED, VersionState.RETIRED}:
+                updated[skill.skill_id] = skill
+                continue
+            taxonomy = self._taxonomy_for_skill(skill)
+            asset_level = max(0, int(skill.asset_level or 0))
+            visible_role = str(skill.visible_role or "").strip()
+            if asset_level <= 1:
+                updated[skill.skill_id] = _copy_skill_hierarchy(
+                    skill,
+                    parent_skill_id="",
+                    parent_candidate_ids=[],
+                    hierarchy_confidence=1.0 if asset_level == 1 else 0.0,
+                    hierarchy_status="root",
+                    visible_role=visible_role or "parent",
+                )
+                continue
+
+            node = taxonomy.get_asset_node(skill.asset_node_id)
+            allowed_parent_nodes = [str(node.parent or "").strip()] if node is not None and str(node.parent or "").strip() else []
+            hits = hierarchy_retriever.search_parents(
+                skill,
+                allowed_parent_nodes=allowed_parent_nodes,
+                limit=min(5, self.retrieval_limit),
+                exclude_ids={skill.skill_id},
+            )
+            linked = self.classify_parent_link(
+                skill,
+                parent_hits=hits,
+                allowed_parent_nodes=allowed_parent_nodes,
+            )
+            parent_skill_id = str(linked.get("parent_skill_id") or "").strip()
+            confidence = clip_confidence(linked.get("confidence"), default=0.0)
+            status = "linked" if parent_skill_id else "unresolved"
+            if parent_skill_id:
+                parent_skill = corpus_by_id.get(parent_skill_id)
+                parent_level = max(1, int(getattr(parent_skill, "asset_level", 0) or 0)) if parent_skill is not None else asset_level - 1
+                if parent_level != max(1, asset_level - 1):
+                    parent_skill_id = ""
+                    status = "unresolved"
+                    confidence = 0.0
+            updated[skill.skill_id] = _copy_skill_hierarchy(
+                skill,
+                parent_skill_id=parent_skill_id,
+                parent_candidate_ids=[str(hit.skill.skill_id or "").strip() for hit in hits],
+                hierarchy_confidence=confidence,
+                hierarchy_status=status,
+                visible_role=visible_role or ("leaf" if asset_level >= 3 else "parent"),
+            )
+
+        children_by_parent: Dict[str, List[str]] = {}
+        for skill in updated.values():
+            parent_skill_id = str(skill.parent_skill_id or "").strip()
+            if not parent_skill_id:
+                continue
+            children_by_parent.setdefault(parent_skill_id, []).append(skill.skill_id)
+        for parent_skill_id, child_ids in children_by_parent.items():
+            parent = updated.get(parent_skill_id) or corpus_by_id.get(parent_skill_id)
+            if parent is None:
+                continue
+            merged_child_ids = sorted(set(list(parent.child_skill_ids or []) + list(child_ids or [])))
+            linked_parent = _copy_skill_hierarchy(
+                parent,
+                child_skill_ids=merged_child_ids,
+                hierarchy_status="parent",
+                visible_role=str(parent.visible_role or "").strip() or "parent",
+            )
+            if parent_skill_id in updated:
+                updated[parent_skill_id] = linked_parent
+            else:
+                touched_existing[parent_skill_id] = linked_parent
+
+        return [updated.get(skill.skill_id, skill) for skill in current], list(touched_existing.values())
 
     def create_new_version(self, *, current_version: str, action: str) -> str:
         """Creates the next version string for one lifecycle action."""
@@ -1348,6 +1679,10 @@ def register_versions(
         target_state=effective_state,
     )
     reconciled.skill_specs = [_merge_layout_metadata(skill, metadata=metadata) for skill in list(reconciled.skill_specs or [])]
+    reconciled.skill_specs, reconciled.hierarchy_updates = manager.link_hierarchy(
+        skills=reconciled.skill_specs,
+        existing_skills=preexisting_skills,
+    )
     reconciled.documents = list(documents or [])
     reconciled.dry_run = bool(dry_run)
     current_store_skills: List[Any] = []
@@ -1358,7 +1693,7 @@ def register_versions(
         for support in reconciled.support_records:
             registry.upsert_support(support)
         seen_skills: Set[str] = set()
-        for skill in reconciled.skill_specs:
+        for skill in list(reconciled.skill_specs or []) + list(reconciled.hierarchy_updates or []):
             key = f"{skill.skill_id}:{skill.status.value}"
             if key in seen_skills:
                 continue
@@ -1391,7 +1726,7 @@ def register_versions(
                 try:
                     touched_store_skills, current_store_skills = _sync_store_skills(
                         sdk=sdk,
-                        skill_specs=reconciled.skill_specs,
+                        skill_specs=list(reconciled.skill_specs or []) + list(reconciled.hierarchy_updates or []),
                         user_id=str(user_id or "").strip() or DEFAULT_DOC_SKILL_USER_ID,
                         metadata=md,
                         logger=logger,

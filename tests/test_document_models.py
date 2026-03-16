@@ -57,6 +57,10 @@ class DocumentModelsTest(unittest.TestCase):
             description="Build rapport before deeper intervention.",
             asset_type="session_skill",
             granularity="session",
+            asset_node_id="session_framework",
+            asset_path="family_root/treatment_framework/session_framework",
+            asset_level=2,
+            visible_role="parent",
             objective="Establish rapport before deeper intervention.",
             domain="psychology",
             task_family="questioning",
@@ -84,6 +88,10 @@ class DocumentModelsTest(unittest.TestCase):
             skill_body="# Goal\nBuild rapport.",
             asset_type="session_skill",
             granularity="session",
+            asset_node_id="session_framework",
+            asset_path="family_root/treatment_framework/session_framework",
+            asset_level=2,
+            visible_role="parent",
             objective="Establish rapport before deeper intervention.",
             domain="psychology",
             task_family="questioning",
@@ -124,11 +132,16 @@ class DocumentModelsTest(unittest.TestCase):
         self.assertEqual(support2.relation_type, SupportRelation.SUPPORT)
         self.assertEqual(draft2.support_ids, [support.support_id])
         self.assertEqual(draft2.asset_type, "session_skill")
+        self.assertEqual(draft2.asset_node_id, "session_framework")
+        self.assertEqual(draft2.asset_path, "family_root/treatment_framework/session_framework")
+        self.assertEqual(draft2.asset_level, 2)
         self.assertEqual(draft2.granularity, "session")
         self.assertEqual(draft2.objective, "Establish rapport before deeper intervention.")
         self.assertEqual(draft2.intervention_moves, ["Reflect the client's initial concern."])
         self.assertEqual(len(draft2.examples), 1)
         self.assertEqual(skill2.status, VersionState.ACTIVE)
+        self.assertEqual(skill2.asset_node_id, "session_framework")
+        self.assertEqual(skill2.asset_level, 2)
         self.assertEqual(skill2.applicable_signals, ["When the client is entering a first session."])
         self.assertEqual(len(skill2.examples), 1)
         self.assertEqual(lifecycle2.to_state, VersionState.ACTIVE)

@@ -16,7 +16,7 @@ document
   -> extract_skills (SupportRecord + SkillDraft)
   -> compile_skills (SkillSpec)
   -> register_versions
-  -> registry + staged snapshots + final SkillBank store + visible parent/child skill tree
+  -> registry + staged snapshots + final SkillBank store + visible domain/family/level skill tree
 ```
 
 Core layers:
@@ -37,7 +37,7 @@ Core layers:
 - dry-run and stage-by-stage execution
 - support-backed provenance and change logs
 - lifecycle-aware versioning: `candidate -> draft -> evaluating -> active -> watchlist -> deprecated -> retired`
-- visible parent/child output tree under the document skill library root
+- visible domain/family/level skill tree under the document skill library root
 - incremental intermediate snapshots under `.runtime/intermediate_runs/<run_id>/` during non-dry-run builds
 - configurable skill taxonomy via built-in or custom YAML files, with `domain_type` supplied by the caller rather than predicted by the model
 
@@ -46,7 +46,7 @@ Input notes:
 - `.doc` / `.docx` require local conversion tools such as `textutil`, `antiword`, or `catdoc`
 - unsupported binary files such as images or PDFs are currently skipped rather than decoded as noisy text
 - `generic` LLM / embedding backends require explicit `AUTOSKILL_GENERIC_LLM_URL` / `AUTOSKILL_GENERIC_EMBED_URL`
-- generated visible-tree artifacts under `总技能/`, `子技能/`, and `references/` are skipped during ingest so exported skills are not re-extracted as source documents
+- generated visible-tree artifacts under `总技能/`, `一级技能/`, `二级技能/`, `微技能/`, `Family技能/`, and `references/` are skipped during ingest so exported skills are not re-extracted as source documents
 
 ## Default Paths
 
@@ -73,18 +73,43 @@ Visible output tree:
 ```text
 <store_root>/
   README.md
-  <family_name>/
+  <domain_root>/
     总技能/
       SKILL.md
       references/
-        children_manifest.json
-        children_map.md
-    子技能/
-      <child_name>/
-        SKILL.md
-        references/
-          evidence.md
-          evidence_manifest.json
+        domain_manifest.json
+    Family技能/
+      <family_name>/
+        总技能/
+          SKILL.md
+          references/
+            children_manifest.json
+            children_map.md
+        一级技能/
+          <skill_name>/
+            SKILL.md
+            references/
+              children_manifest.json
+              children_map.md
+              evidence.md
+              evidence_manifest.json
+        二级技能/
+          <skill_name>/
+            SKILL.md
+            references/
+              children_manifest.json
+              children_map.md
+              evidence.md
+              evidence_manifest.json
+        微技能/
+          <skill_name>/
+            SKILL.md
+            references/
+              evidence.md
+              evidence_manifest.json
+  Users/
+    docskill/
+      ...
   .runtime/
     document_registry/
     intermediate_runs/
@@ -98,8 +123,8 @@ Storage layers under the same library root:
    - internal document/support/skill/version records
 2. `Users/<internal_user>/`
    - final AutoSkill local-store skills synced directly from reconciled `SkillSpec` records
-3. `<family_name>/`
-   - visible parent/child projection built for browsing and export
+3. `<domain_root>/`
+   - visible domain root, family root, and `一级技能 / 二级技能 / 微技能` projection built for browsing and export
 
 These layers share one root, but they are not the same dataset. During long runs,
 non-`dry-run` builds also write incremental snapshots under
@@ -122,26 +147,32 @@ single extraction step. It works in two layers:
    - `compile` turns drafts into `SkillSpec`
    - `register_versions` retrieves top-k similar existing skills with hybrid embedding + BM25 scoring over metadata-rich skill text, then decides create / strengthen / revise / merge / split / unchanged before persisting registry state and lifecycle updates
 
-2. The visible parent/child tree is then projected for browsing/export
-   - if final store skills are available, the visible child skills are rebuilt from the reconciled `Users/<internal_user>/...` store results
+2. The visible domain/family tree is then projected for browsing/export
+   - if final store skills are available, the visible family skills are rebuilt from the reconciled `Users/<internal_user>/...` store results
    - registry records are still used to stitch `references/evidence.md` and `references/evidence_manifest.json`
-   - one parent navigation skill is synthesized per `family_name`
-   - `children_manifest.json` and `children_map.md` are emitted together with the parent skill
+   - one domain-root navigation skill is synthesized per `domain_root`
+   - one family-root navigation skill is synthesized per `family_name`
+   - level-1 / level-2 parent skills can also receive nested `children_manifest.json` and `children_map.md` when linked child skills exist
 
 This is intentional:
 
 - the source of truth stays in document/support/skill registry layers
-- the parent skill remains a navigation layer rather than raw truth
+- the domain/family parent skills remain a navigation layer rather than raw truth
 - the visible tree can be rebuilt after updates without manual drift
 - the visible family tree now prefers final store-reconciled skills so it stays aligned with `Users/<internal_user>/...`
+- nested parent skills can carry child routing sections without changing registry truth
 
 To keep the visible layout stable, the most important flag is:
 
 - `--family-name`
 
+It determines the family subtree under `<domain_root>/Family技能/`.
+
 If `--profile-id` is omitted, AutoSkill4Doc now derives one from the selected
 taxonomy plus `family_name`. If `--taxonomy-axis` is omitted, the selected
-taxonomy may provide a default axis label.
+taxonomy may provide a default axis label. If `--family-name` is omitted,
+AutoSkill4Doc first tries taxonomy rule matching and then one constrained LLM
+classification pass over the configured `family_candidates`.
 `--user-id` is now treated as an internal store-routing detail and is no longer
 part of the normal documented workflow. If omitted, AutoSkill4Doc uses the
 neutral internal user id `docskill`.
@@ -166,10 +197,11 @@ Important:
 - `domain_type` is caller-provided configuration, not model output
 - the model still returns the stable internal `asset_type`
 - taxonomy files provide:
-  - domain-specific labels, aliases, and guidance
+  - domain-specific labels, aliases, guidance, and hierarchy nodes
   - optional default `family_name`
   - optional default `taxonomy_axis`
   - optional family candidates for future constrained family resolution
+  - optional `asset_tree` and `visible_levels` for multi-level family trees
 
 Example:
 
@@ -202,6 +234,7 @@ How taxonomy loading works:
 - the final resolved values then feed:
   - extraction prompt guidance
   - `asset_type` alias normalization
+  - `asset_node_id` hierarchy-node normalization
   - default `family_name`
   - default `taxonomy_axis`
   - auto-derived `profile_id`
@@ -216,6 +249,12 @@ Important taxonomy fields:
 - `default_family_name`: fallback visible family name
 - `family_candidates`: optional constrained candidate set for future family resolution
 - `asset_types`: domain labels mapped back to stable internal base types
+- `visible_levels`: visible labels such as `总技能 / 一级技能 / 二级技能 / 微技能`
+- `asset_tree`: configuration-driven hierarchy nodes; the model may emit `asset_node_id`, and the pipeline uses it to constrain same-level merge and later parent-child linking
+
+`asset_types` and `asset_tree` are intentionally different layers:
+- `asset_types` define stable coarse types such as `session_skill` or `micro_skill`
+- `asset_tree` defines the visible hierarchy and parent/child layout such as `family_root -> 一级技能 -> 二级技能 -> 微技能`
 
 Minimal taxonomy example:
 
@@ -230,11 +269,26 @@ family_candidates:
   - id: cbt
     name: CBT（认知行为疗法）
     aliases: ["CBT", "认知行为疗法", "cognitive behavioral therapy"]
+visible_levels:
+  root_label: 总技能
+  level_labels:
+    "1": 一级技能
+    "2": 二级技能
+    "3": 微技能
 asset_types:
   - base_type: session_skill
     label: session_intervention
     description: One counseling workflow or session scaffold.
     aliases: ["session_intervention", "session_skill"]
+asset_tree:
+  - id: session_framework
+    label_zh: 二级技能
+    label_en: Second-Level Skill
+    base_type: session_skill
+    level: 2
+    parent: treatment_framework
+    visible_role: parent
+    default_for_base_type: true
 ```
 
 Other configuration sources:
@@ -277,12 +331,12 @@ For the current MVP, yes:
 
 But this is still simpler than the full paper target:
 
-- the parent skill is currently synthesized from active child skills
+- the domain/family parent skills are currently synthesized from active child skills
 - the visible tree already matches the target directory shape
 - the full `single-document standardization + canonical merge + parent synthesis`
   quality pipeline is not fully implemented yet
 - `.runtime/document_registry/` may still contain more internal skill records than
-  the final `Users/<internal_user>/...` store and visible `<family_name>/...` tree
+  the final `Users/<internal_user>/...` store and visible `<domain_root>/Family技能/<family_name>/...` tree
 
 Stored entities:
 
@@ -323,6 +377,8 @@ Notes:
 - non-`dry-run` `build` / `llm-extract` writes ingest/extract/compile/register snapshots to `.runtime/intermediate_runs/<run_id>/`.
 - `retrieve-hierarchy` now opens the family directly when the library contains only one visible family.
 - `canonical-merge` currently inspects staged results. When staging contains one unique bucket, it can infer `profile_id`, `family_name`, and `child_type`; otherwise pass them explicitly.
+- when `--family-name` is omitted, family resolution first uses configured aliases/keywords, then one constrained LLM classification pass, and finally falls back to the taxonomy's `default_family_name` instead of the first configured candidate.
+- when one batch contains documents that strongly match different configured families, the batch-level fallback becomes the taxonomy default family; document-level family metadata is still preserved on extracted skills so later versioning and visible-tree projection can keep specific family signals.
 
 ## Python API
 
@@ -359,7 +415,8 @@ compiled = pipeline.compile_skills(
 - `extract.py` / `__main__.py`: standalone package CLI + API entrypoint
 - `pipeline.py`: staged orchestration
 - `ingest.py`: document normalization and incremental checks
-- `taxonomy.py`: built-in/custom skill taxonomy loading plus `family_name`/`profile_id` resolution
+- `taxonomy.py`: built-in/custom skill taxonomy loading plus family/domain hierarchy metadata
+- `family_resolver.py`: constrained family classification over configured `family_candidates`
 - `document/file_loader.py`: directory/file loading, conversion fallback, and generated-artifact skipping
 - `document/windowing.py`: section filtering and strict/recommended window construction
 - `stages/extractor.py`: `DocumentRecord -> SupportRecord[] + SkillDraft[]`
@@ -370,7 +427,7 @@ compiled = pipeline.compile_skills(
 - `stages/migrate.py`: safe runtime layout preparation
 - `store/versioning.py`: skill-centric version/lifecycle reconciliation
 - `store/registry.py`: filesystem registry persistence
-- `store/visible_tree.py`: visible `总技能/子技能/references` export, rebuilt from final store skills plus registry evidence
+- `store/visible_tree.py`: visible `领域总技能 / Family技能 / 一级技能 / 二级技能 / 微技能 / references` export, rebuilt from final store skills plus registry evidence
 - `store/intermediate.py`: incremental per-run ingest/extract/compile/register snapshots
 - `store/layout.py`: shared visible/runtime path conventions
 - `store/staging.py`: canonical-merge staging payload helpers

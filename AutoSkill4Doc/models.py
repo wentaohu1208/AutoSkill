@@ -690,6 +690,15 @@ class SkillDraft(SerializableModel):
     description: str
     asset_type: str = _DEFAULT_ASSET_TYPE
     granularity: str = _DEFAULT_GRANULARITY
+    asset_node_id: str = ""
+    asset_path: str = ""
+    asset_level: int = 0
+    parent_skill_id: str = ""
+    parent_candidate_ids: List[str] = field(default_factory=list)
+    child_skill_ids: List[str] = field(default_factory=list)
+    hierarchy_confidence: float = 0.0
+    hierarchy_status: str = ""
+    visible_role: str = ""
     objective: str = ""
     domain: str = ""
     task_family: str = ""
@@ -718,6 +727,15 @@ class SkillDraft(SerializableModel):
         self.description = str(self.description or "").strip()
         self.asset_type = _coerce_asset_type(self.asset_type)
         self.granularity = _coerce_granularity(self.granularity, asset_type=self.asset_type)
+        self.asset_node_id = str(self.asset_node_id or "").strip()
+        self.asset_path = str(self.asset_path or "").strip()
+        self.asset_level = max(0, int(self.asset_level or 0))
+        self.parent_skill_id = str(self.parent_skill_id or "").strip()
+        self.parent_candidate_ids = _coerce_str_list(self.parent_candidate_ids)
+        self.child_skill_ids = _coerce_str_list(self.child_skill_ids)
+        self.hierarchy_confidence = float(self.hierarchy_confidence or 0.0)
+        self.hierarchy_status = str(self.hierarchy_status or "").strip()
+        self.visible_role = str(self.visible_role or "").strip()
         self.objective = str(self.objective or "").strip() or self.description
         self.domain = str(self.domain or "").strip()
         self.task_family = str(self.task_family or "").strip()
@@ -749,6 +767,8 @@ class SkillDraft(SerializableModel):
             intervention_moves=self.intervention_moves,
             workflow_steps=self.workflow_steps,
         )
+        if self.asset_node_id and not self.asset_path:
+            self.asset_path = self.asset_node_id
         self.validate()
 
     def validate(self) -> None:
@@ -776,6 +796,7 @@ class SkillDraft(SerializableModel):
         if not self.support_ids:
             raise ValueError("skill draft must reference at least one support record")
         _validate_confidence(self.confidence)
+        _validate_confidence(self.hierarchy_confidence)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SkillDraft":
@@ -788,6 +809,15 @@ class SkillDraft(SerializableModel):
             description=str(data.get("description") or "").strip(),
             asset_type=str(data.get("asset_type") or "").strip(),
             granularity=str(data.get("granularity") or "").strip(),
+            asset_node_id=str(data.get("asset_node_id") or "").strip(),
+            asset_path=str(data.get("asset_path") or "").strip(),
+            asset_level=int(data.get("asset_level", 0) or 0),
+            parent_skill_id=str(data.get("parent_skill_id") or "").strip(),
+            parent_candidate_ids=_coerce_str_list(data.get("parent_candidate_ids")),
+            child_skill_ids=_coerce_str_list(data.get("child_skill_ids")),
+            hierarchy_confidence=float(data.get("hierarchy_confidence", 0.0) or 0.0),
+            hierarchy_status=str(data.get("hierarchy_status") or "").strip(),
+            visible_role=str(data.get("visible_role") or "").strip(),
             objective=str(data.get("objective") or "").strip(),
             domain=str(data.get("domain") or "").strip(),
             task_family=str(data.get("task_family") or "").strip(),
@@ -819,6 +849,15 @@ class SkillSpec(SerializableModel):
     skill_body: str
     asset_type: str = _DEFAULT_ASSET_TYPE
     granularity: str = _DEFAULT_GRANULARITY
+    asset_node_id: str = ""
+    asset_path: str = ""
+    asset_level: int = 0
+    parent_skill_id: str = ""
+    parent_candidate_ids: List[str] = field(default_factory=list)
+    child_skill_ids: List[str] = field(default_factory=list)
+    hierarchy_confidence: float = 0.0
+    hierarchy_status: str = ""
+    visible_role: str = ""
     objective: str = ""
     domain: str = ""
     task_family: str = ""
@@ -848,6 +887,15 @@ class SkillSpec(SerializableModel):
         self.skill_body = str(self.skill_body or "")
         self.asset_type = _coerce_asset_type(self.asset_type)
         self.granularity = _coerce_granularity(self.granularity, asset_type=self.asset_type)
+        self.asset_node_id = str(self.asset_node_id or "").strip()
+        self.asset_path = str(self.asset_path or "").strip()
+        self.asset_level = max(0, int(self.asset_level or 0))
+        self.parent_skill_id = str(self.parent_skill_id or "").strip()
+        self.parent_candidate_ids = _coerce_str_list(self.parent_candidate_ids)
+        self.child_skill_ids = _coerce_str_list(self.child_skill_ids)
+        self.hierarchy_confidence = float(self.hierarchy_confidence or 0.0)
+        self.hierarchy_status = str(self.hierarchy_status or "").strip()
+        self.visible_role = str(self.visible_role or "").strip()
         self.objective = str(self.objective or "").strip() or self.description
         self.domain = str(self.domain or "").strip()
         self.task_family = str(self.task_family or "").strip()
@@ -880,6 +928,8 @@ class SkillSpec(SerializableModel):
             intervention_moves=self.intervention_moves,
             workflow_steps=self.workflow_steps,
         )
+        if self.asset_node_id and not self.asset_path:
+            self.asset_path = self.asset_node_id
         self.validate()
 
     def validate(self) -> None:
@@ -905,6 +955,7 @@ class SkillSpec(SerializableModel):
                 "skill must include workflow_steps, intervention_moves, constraints, or cautions"
             )
         _validate_semver(self.version, field_name="version")
+        _validate_confidence(self.hierarchy_confidence)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SkillSpec":
@@ -917,6 +968,15 @@ class SkillSpec(SerializableModel):
             skill_body=str(data.get("skill_body") or ""),
             asset_type=str(data.get("asset_type") or "").strip(),
             granularity=str(data.get("granularity") or "").strip(),
+            asset_node_id=str(data.get("asset_node_id") or "").strip(),
+            asset_path=str(data.get("asset_path") or "").strip(),
+            asset_level=int(data.get("asset_level", 0) or 0),
+            parent_skill_id=str(data.get("parent_skill_id") or "").strip(),
+            parent_candidate_ids=_coerce_str_list(data.get("parent_candidate_ids")),
+            child_skill_ids=_coerce_str_list(data.get("child_skill_ids")),
+            hierarchy_confidence=float(data.get("hierarchy_confidence", 0.0) or 0.0),
+            hierarchy_status=str(data.get("hierarchy_status") or "").strip(),
+            visible_role=str(data.get("visible_role") or "").strip(),
             objective=str(data.get("objective") or "").strip(),
             domain=str(data.get("domain") or "").strip(),
             task_family=str(data.get("task_family") or "").strip(),

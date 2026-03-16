@@ -74,6 +74,7 @@ def build_offline_extract_prompt(*, channel: str, max_candidates: int, taxonomy:
             "Each skill item fields:\n"
             "- name, description, prompt, triggers, tags\n"
             "- asset_type (macro_protocol|session_skill|micro_skill|safety_rule|knowledge_reference)\n"
+            "- optional asset_node_id (must be one configured taxonomy node id when present)\n"
             "- granularity (macro|session|micro), objective\n"
             "- domain, task_family, method_family, stage\n"
             "- applicable_signals, intervention_moves, contraindications\n"
@@ -149,7 +150,7 @@ def build_offline_repair_prompt(*, channel: str, max_candidates: int, taxonomy: 
     if ch == OFFLINE_CHANNEL_DOC:
         label = "document"
         keep_fields = (
-            "name, description, prompt, triggers, tags, asset_type, granularity, objective, "
+            "name, description, prompt, triggers, tags, asset_type, asset_node_id, granularity, objective, "
             "domain, task_family, method_family, stage, applicable_signals, intervention_moves, contraindications, "
             "workflow_steps, constraints, cautions, output_contract, examples, relation_type, risk_class, confidence, "
             "optional resources/files"

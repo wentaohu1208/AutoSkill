@@ -9,7 +9,7 @@ from autoskill import AutoSkill, AutoSkillConfig
 from AutoSkill4Doc.stages.compiler import _identity_key_for_skill, build_skill_compiler, compile_skills
 from AutoSkill4Doc.stages.extractor import build_document_skill_extractor, extract_skills
 from AutoSkill4Doc.extract import extract_from_doc
-from AutoSkill4Doc.models import SkillDraft, SupportRecord, SupportRelation, TextSpan, VersionState
+from AutoSkill4Doc.models import DocumentRecord, SkillDraft, SupportRecord, SupportRelation, TextSpan, VersionState
 from AutoSkill4Doc.pipeline import build_default_document_pipeline
 from AutoSkill4Doc.core.config import DEFAULT_DOC_SKILL_USER_ID
 from AutoSkill4Doc.prompts import OFFLINE_CHANNEL_DOC, build_offline_extract_prompt
@@ -214,6 +214,8 @@ class DocumentPipelineTest(unittest.TestCase):
             self.assertIn("## Example Therapist Responses", stored_skills[0].instructions)
             self.assertGreaterEqual(len(stored_skills[0].examples), 1)
             self.assertTrue(os.path.isdir(result.intermediate.get("run_dir", "")))
+            status_path = os.path.join(result.intermediate["run_dir"], "status.json")
+            self.assertTrue(os.path.isfile(status_path))
             self.assertTrue(os.path.isfile(os.path.join(result.intermediate["run_dir"], "ingest", "result.json")))
             self.assertTrue(os.path.isfile(os.path.join(result.intermediate["run_dir"], "extract", "result.json")))
             self.assertTrue(os.path.isfile(os.path.join(result.intermediate["run_dir"], "compile", "result.json")))
@@ -228,9 +230,48 @@ class DocumentPipelineTest(unittest.TestCase):
                     )
                 )
             )
+            with open(status_path, "r", encoding="utf-8") as f:
+                status_payload = json.load(f)
+            self.assertEqual(status_payload.get("metadata", {}).get("domain_root_name"), "心理咨询")
+            self.assertEqual(status_payload.get("metadata", {}).get("family_name"), "通用心理咨询")
             self.assertTrue(any("[ingest_document]" in line for line in logs))
             self.assertTrue(any("[extract_skills]" in line for line in logs))
             self.assertTrue(any("[compile_skills]" in line for line in logs))
+
+    def test_resolve_run_metadata_falls_back_to_default_family_for_mixed_rule_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sdk = self._build_sdk(store_path=tmpdir)
+            pipeline = build_default_document_pipeline(sdk=sdk)
+            cbt_doc = DocumentRecord(
+                doc_id="doc-cbt",
+                source_type="markdown_document",
+                title="CBT automatic thought worksheet",
+                domain="psychology",
+                raw_text="# 自动思维\n使用 ABC 记录表识别自动思维。\n",
+                sections=[],
+                content_hash="cbt-hash",
+            )
+            pd_doc = DocumentRecord(
+                doc_id="doc-pd",
+                source_type="markdown_document",
+                title="Psychodynamic transference interpretation",
+                domain="psychology",
+                raw_text="# 移情\n围绕移情与防御机制进行解释。\n",
+                sections=[],
+                content_hash="pd-hash",
+            )
+
+            metadata = pipeline.resolve_run_metadata(
+                documents=[cbt_doc, pd_doc],
+                metadata={"channel": "offline_extract_from_doc", "domain_type": "psychology"},
+            )
+
+            self.assertEqual(metadata.get("family_name"), "通用心理咨询")
+            self.assertEqual(metadata.get("family_source"), "mixed_rule")
+            self.assertEqual(
+                sorted(list(metadata.get("family_candidates_detected") or [])),
+                ["心理动力学", "认知行为疗法"],
+            )
 
     def test_intermediate_extract_progress_uses_safe_doc_filenames(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -326,8 +367,8 @@ class DocumentPipelineTest(unittest.TestCase):
                 },
             )
 
-            parent_md = os.path.join(tmpdir, "认知行为疗法", "总技能", "SKILL.md")
-            child_root = os.path.join(tmpdir, "认知行为疗法", "子技能")
+            parent_md = result.registration.visible_tree["parent_paths"][0]
+            child_root = os.path.dirname(os.path.dirname(result.registration.visible_tree["child_paths"][0]))
             self.assertTrue(os.path.isfile(parent_md))
             self.assertTrue(os.path.isdir(child_root))
             self.assertTrue(result.registration.visible_tree.get("parent_paths"))
@@ -431,6 +472,7 @@ class DocumentPipelineTest(unittest.TestCase):
         macro = _identity_key_for_skill(
             asset_type="macro_protocol",
             granularity="macro",
+            asset_node_id="treatment_framework",
             objective="Run a full intake protocol.",
             domain="psychology",
             task_family="assessment",
@@ -441,6 +483,7 @@ class DocumentPipelineTest(unittest.TestCase):
         micro = _identity_key_for_skill(
             asset_type="micro_skill",
             granularity="micro",
+            asset_node_id="micro_intervention",
             objective="Deliver one empathic reflection.",
             domain="psychology",
             task_family="assessment",
@@ -731,7 +774,17 @@ Use a scaling question to help the client rate progress and define the next step
             workflow_steps=["Build rapport first."],
             constraints=["Do not rush disclosure."],
             support_ids=["sup-a"],
-            metadata={"prompt": "# Goal\nBuild rapport."},
+            metadata={
+                "prompt": "# Goal\nBuild rapport.",
+                "family_name": "认知行为疗法",
+                "family_id": "cbt",
+                "profile_id": "psychology::认知行为疗法",
+                "domain_root_name": "心理咨询",
+                "domain_root_id": "psychology",
+                "taxonomy_axis": "疗法",
+                "family_bucket_label": "Family技能",
+                "visible_levels": {"1": "一级技能", "2": "二级技能", "3": "微技能"},
+            },
         )
         draft_b = SkillDraft(
             draft_id="draft-b",
@@ -748,7 +801,17 @@ Use a scaling question to help the client rate progress and define the next step
             workflow_steps=["Review homework first."],
             constraints=["Check barriers before assigning more work."],
             support_ids=["sup-b"],
-            metadata={"prompt": "# Goal\nReview homework."},
+            metadata={
+                "prompt": "# Goal\nReview homework.",
+                "family_name": "认知行为疗法",
+                "family_id": "cbt",
+                "profile_id": "psychology::认知行为疗法",
+                "domain_root_name": "心理咨询",
+                "domain_root_id": "psychology",
+                "taxonomy_axis": "疗法",
+                "family_bucket_label": "Family技能",
+                "visible_levels": {"1": "一级技能", "2": "二级技能", "3": "微技能"},
+            },
         )
 
         compiled = compile_skills(
@@ -766,6 +829,12 @@ Use a scaling question to help the client rate progress and define the next step
             {spec.name for spec in compiled.skill_specs},
             {"rapport building / intake", "homework review / session opening"},
         )
+        for spec in compiled.skill_specs:
+            self.assertEqual(spec.metadata.get("family_name"), "认知行为疗法")
+            self.assertEqual(spec.metadata.get("family_id"), "cbt")
+            self.assertEqual(spec.metadata.get("profile_id"), "psychology::认知行为疗法")
+            self.assertEqual(spec.metadata.get("domain_root_name"), "心理咨询")
+            self.assertEqual(spec.metadata.get("taxonomy_axis"), "疗法")
 
     def test_changed_document_bumps_registry_versions(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

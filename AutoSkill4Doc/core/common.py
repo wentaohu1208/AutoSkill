@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 import os
-from typing import Callable, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 StageLogger = Optional[Callable[[str], None]]
 
@@ -82,6 +82,26 @@ def summarize_names(items: Sequence[str], *, limit: int = 5) -> str:
     if len(names) <= limit:
         return ", ".join(names)
     return ", ".join(names[:limit]) + f", +{len(names) - limit} more"
+
+
+def should_keep_metadata_value(value: Any) -> bool:
+    """Returns whether one metadata value is meaningful enough to persist."""
+
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+def compact_metadata(mapping: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Drops only empty-string/None metadata while preserving structured values."""
+
+    out: Dict[str, Any] = {}
+    for key, value in dict(mapping or {}).items():
+        if should_keep_metadata_value(value):
+            out[str(key)] = value
+    return out
 
 
 _SAFETY_HINTS = (

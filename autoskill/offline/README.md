@@ -73,6 +73,8 @@ AutoSkill4Doc/
   pipeline.py
   models.py
   prompts.py
+  taxonomy.py
+  family_resolver.py
   core/
     config.py
     provider_config.py
@@ -88,6 +90,7 @@ AutoSkill4Doc/
     merge.py
     migrate.py
   store/
+    intermediate.py
     layout.py
     staging.py
     versioning.py

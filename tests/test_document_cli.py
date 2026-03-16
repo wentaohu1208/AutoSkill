@@ -8,7 +8,18 @@ import tempfile
 import unittest
 
 from autoskill.cli import main as autoskill_main
-from AutoSkill4Doc import resolve_staging_bucket_context, skill_retrieval_text
+from AutoSkill4Doc import (
+    DocumentRegistry,
+    SkillSpec,
+    VersionState,
+    DocumentFamilyResolver,
+    DocumentFamilyResolution,
+    TaxonomyAssetNode,
+    build_document_family_resolver,
+    retrieve_hierarchy,
+    resolve_staging_bucket_context,
+    skill_retrieval_text,
+)
 from AutoSkill4Doc.__main__ import main as autoskill4doc_main
 from AutoSkill4Doc.core.config import DEFAULT_DOC_SKILL_USER_ID, default_store_path
 from AutoSkill4Doc.extract import _build_sdk_from_args, build_parser, main
@@ -322,6 +333,10 @@ class DocumentCliTest(unittest.TestCase):
     def test_top_level_package_exports_retrieval_and_staging_helpers(self) -> None:
         self.assertTrue(callable(resolve_staging_bucket_context))
         self.assertTrue(callable(skill_retrieval_text))
+        self.assertTrue(TaxonomyAssetNode)
+        self.assertTrue(DocumentFamilyResolver)
+        self.assertTrue(DocumentFamilyResolution)
+        self.assertTrue(callable(build_document_family_resolver))
 
     def test_root_autoskill_cli_rejects_document_route(self) -> None:
         buf = io.StringIO()
@@ -507,6 +522,7 @@ class DocumentCliTest(unittest.TestCase):
             self.assertEqual(merge_payload["route"], "canonical_merge")
             self.assertEqual(merge_payload["profile_id"], "test_therapy_v2")
             self.assertEqual(merge_payload["family_id"], "认知行为疗法")
+            self.assertEqual(merge_payload["family_name"], "认知行为疗法")
             self.assertEqual(merge_payload["child_type"], "intake")
             self.assertGreaterEqual(len(list(merge_payload.get("skills") or [])), 1)
 
@@ -549,6 +565,44 @@ class DocumentCliTest(unittest.TestCase):
             self.assertEqual(hierarchy["route"], "family_hierarchy")
             self.assertEqual(hierarchy["family_name"], "认知行为疗法")
             self.assertEqual(hierarchy["profile_id"], "test_therapy_v2")
+
+    def test_retrieve_hierarchy_runtime_fallback_keeps_micro_level_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = DocumentRegistry(root_dir=os.path.join(tmpdir, ".runtime", "document_registry"))
+            registry.upsert_skill(
+                SkillSpec(
+                    skill_id="micro-1",
+                    name="苏格拉底式提问",
+                    description="One CBT micro intervention.",
+                    skill_body="# Goal\nUse one Socratic question.",
+                    asset_type="micro_skill",
+                    granularity="micro",
+                    asset_node_id="micro_intervention",
+                    asset_level=3,
+                    visible_role="leaf",
+                objective="Use one Socratic question to challenge an automatic thought.",
+                domain="psychology",
+                task_family="reframing",
+                method_family="cbt",
+                stage="intervention",
+                intervention_moves=["Ask one focused evidence question."],
+                support_ids=[],
+                status=VersionState.ACTIVE,
+                metadata={
+                        "family_name": "认知行为疗法",
+                        "domain_root_name": "心理咨询",
+                        "family_bucket_label": "Family技能",
+                    },
+                )
+            )
+
+            hierarchy = retrieve_hierarchy(store_root=tmpdir, family_name="认知行为疗法")
+
+            self.assertEqual(hierarchy["fallback"], "runtime_scan")
+            self.assertEqual(hierarchy["route"], "family_hierarchy")
+            self.assertEqual(hierarchy["family_name"], "认知行为疗法")
+            self.assertTrue(hierarchy["hits"])
+            self.assertIn("微技能", hierarchy["hits"][0]["relative_path"])
 
     def test_migrate_layout_command_prepares_runtime_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

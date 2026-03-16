@@ -3,7 +3,7 @@ Shared library/runtime path helpers for AutoSkill4Doc.
 
 The document skill library exposes two layers:
 
-- visible layer under `<store_root>/<family_name>/...`
+- visible layer under `<store_root>/<domain_root>/Family技能/<family_name>/...`
 - runtime layer under `<store_root>/.runtime/...`
 
 These helpers centralize path rules so visible tree sync, staging, hierarchy
@@ -96,6 +96,46 @@ def family_visible_root(*, base_store_root: str, family_name: str) -> str:
     return os.path.join(normalize_library_root(base_store_root), safe_family_name(family_name or "未命名家族"))
 
 
+def domain_visible_root(*, base_store_root: str, domain_root_name: str) -> str:
+    """Returns the visible root directory for one configured domain."""
+
+    return os.path.join(normalize_library_root(base_store_root), safe_domain_name(domain_root_name or "未命名领域"))
+
+
+def domain_parent_visible_root(*, base_store_root: str, domain_root_name: str) -> str:
+    """Returns the visible `总技能` directory for one domain root."""
+
+    return os.path.join(domain_visible_root(base_store_root=base_store_root, domain_root_name=domain_root_name), "总技能")
+
+
+def family_bucket_root(*, base_store_root: str, domain_root_name: str, family_bucket_label: str = "Family技能") -> str:
+    """Returns the visible family container root under one domain root."""
+
+    return os.path.join(
+        domain_visible_root(base_store_root=base_store_root, domain_root_name=domain_root_name),
+        safe_visible_name(family_bucket_label or "Family技能"),
+    )
+
+
+def family_visible_root_under_domain(
+    *,
+    base_store_root: str,
+    domain_root_name: str,
+    family_name: str,
+    family_bucket_label: str = "Family技能",
+) -> str:
+    """Returns the nested visible root directory for one family under one domain root."""
+
+    return os.path.join(
+        family_bucket_root(
+            base_store_root=base_store_root,
+            domain_root_name=domain_root_name,
+            family_bucket_label=family_bucket_label,
+        ),
+        safe_family_name(family_name or "未命名家族"),
+    )
+
+
 def family_parent_visible_root(*, base_store_root: str, family_name: str) -> str:
     """Returns the visible `总技能` directory for one family."""
 
@@ -106,6 +146,47 @@ def family_children_visible_root(*, base_store_root: str, family_name: str) -> s
     """Returns the visible `子技能` directory for one family."""
 
     return os.path.join(family_visible_root(base_store_root=base_store_root, family_name=family_name), "子技能")
+
+
+def family_parent_visible_root_under_domain(
+    *,
+    base_store_root: str,
+    domain_root_name: str,
+    family_name: str,
+    family_bucket_label: str = "Family技能",
+) -> str:
+    """Returns the visible `总技能` directory for one family nested under one domain root."""
+
+    return os.path.join(
+        family_visible_root_under_domain(
+            base_store_root=base_store_root,
+            domain_root_name=domain_root_name,
+            family_name=family_name,
+            family_bucket_label=family_bucket_label,
+        ),
+        "总技能",
+    )
+
+
+def family_level_visible_root(
+    *,
+    base_store_root: str,
+    domain_root_name: str,
+    family_name: str,
+    level_label: str,
+    family_bucket_label: str = "Family技能",
+) -> str:
+    """Returns the visible directory for one family skill level."""
+
+    return os.path.join(
+        family_visible_root_under_domain(
+            base_store_root=base_store_root,
+            domain_root_name=domain_root_name,
+            family_name=family_name,
+            family_bucket_label=family_bucket_label,
+        ),
+        safe_visible_name(level_label or "子技能"),
+    )
 
 
 def safe_dir_component(value: str) -> str:
@@ -142,4 +223,13 @@ def safe_family_name(value: str) -> str:
     name = safe_visible_name(value or "未命名家族")
     if str(name or "").strip().lower() in _RESERVED_VISIBLE_ROOT_NAMES:
         return f"{name}-skills"
+    return name
+
+
+def safe_domain_name(value: str) -> str:
+    """Converts a visible domain name into a root-safe directory name."""
+
+    name = safe_visible_name(value or "未命名领域")
+    if str(name or "").strip().lower() in _RESERVED_VISIBLE_ROOT_NAMES:
+        return f"{name}-domain"
     return name

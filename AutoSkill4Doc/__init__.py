@@ -36,8 +36,12 @@ __all__ = [
     "TextSpan",
     "SkillTaxonomy",
     "TaxonomyAssetType",
+    "TaxonomyAssetNode",
     "load_skill_taxonomy",
     "list_builtin_skill_taxonomies",
+    "DocumentFamilyResolution",
+    "DocumentFamilyResolver",
+    "build_document_family_resolver",
     "DocumentRegistry",
     "build_registry_from_store_config",
     "normalize_library_root",
@@ -172,16 +176,41 @@ def __getattr__(name: str) -> Any:
     if name in {
         "SkillTaxonomy",
         "TaxonomyAssetType",
+        "TaxonomyAssetNode",
         "load_skill_taxonomy",
         "list_builtin_skill_taxonomies",
     }:
-        from .taxonomy import SkillTaxonomy, TaxonomyAssetType, list_builtin_skill_taxonomies, load_skill_taxonomy
+        from .taxonomy import (
+            SkillTaxonomy,
+            TaxonomyAssetNode,
+            TaxonomyAssetType,
+            list_builtin_skill_taxonomies,
+            load_skill_taxonomy,
+        )
 
         mapping = {
             "SkillTaxonomy": SkillTaxonomy,
             "TaxonomyAssetType": TaxonomyAssetType,
+            "TaxonomyAssetNode": TaxonomyAssetNode,
             "load_skill_taxonomy": load_skill_taxonomy,
             "list_builtin_skill_taxonomies": list_builtin_skill_taxonomies,
+        }
+        return mapping[name]
+    if name in {
+        "DocumentFamilyResolution",
+        "DocumentFamilyResolver",
+        "build_document_family_resolver",
+    }:
+        from .family_resolver import (
+            DocumentFamilyResolution,
+            DocumentFamilyResolver,
+            build_document_family_resolver,
+        )
+
+        mapping = {
+            "DocumentFamilyResolution": DocumentFamilyResolution,
+            "DocumentFamilyResolver": DocumentFamilyResolver,
+            "build_document_family_resolver": build_document_family_resolver,
         }
         return mapping[name]
     if name in {

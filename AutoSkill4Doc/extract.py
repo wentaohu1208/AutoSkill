@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from autoskill import AutoSkill, AutoSkillConfig
 
-from .core.common import StageLogger
+from .core.common import StageLogger, compact_metadata
 from .core.config import (
     DEFAULT_DOC_SKILL_USER_ID,
     DEFAULT_EXTRACT_STRATEGY,
@@ -84,15 +84,22 @@ def _resolve_taxonomy_context(
         domain_type=str(domain_type or domain or "").strip(),
         taxonomy_path=str(skill_taxonomy_path or "").strip(),
     )
+    explicit_family = (
+        str(family_name or "").strip()
+        or str((metadata or {}).get("family_name") or "").strip()
+        or str((metadata or {}).get("school_name") or "").strip()
+    )
     resolved_family = taxonomy.resolve_family_name(
-        requested=str(family_name or "").strip(),
+        requested=explicit_family,
         metadata=metadata,
-    )
+    ) if explicit_family else ""
     resolved_axis = taxonomy.resolve_axis_label(requested=str(taxonomy_axis or "").strip())
-    resolved_profile_id = taxonomy.derive_profile_id(
-        requested=str(profile_id or "").strip(),
-        family_name=resolved_family,
-    )
+    resolved_profile_id = str(profile_id or "").strip()
+    if not resolved_profile_id and resolved_family:
+        resolved_profile_id = taxonomy.derive_profile_id(
+            requested="",
+            family_name=resolved_family,
+        )
     return taxonomy, resolved_family, resolved_axis, resolved_profile_id
 
 
@@ -155,6 +162,10 @@ def extract_from_doc(
         md["profile_id"] = resolved_profile_id
     if resolved_axis:
         md["taxonomy_axis"] = resolved_axis
+    md["domain_root_name"] = taxonomy.domain_root_name()
+    md["domain_root_id"] = taxonomy.domain_root_id()
+    md["family_bucket_label"] = taxonomy.family_bucket_label()
+    md["visible_levels"] = dict(taxonomy.to_dict().get("visible_levels") or {})
     if str(domain_type or domain or "").strip():
         md["domain_type"] = str(domain_type or domain).strip()
 
@@ -178,6 +189,7 @@ def extract_from_doc(
             skill_taxonomy_path=str(skill_taxonomy_path or "").strip(),
             taxonomy=taxonomy,
         ),
+        taxonomy=taxonomy,
     )
     result = pipeline.build(
         user_id=str(user_id or "").strip() or DEFAULT_DOC_SKILL_USER_ID,
@@ -421,6 +433,7 @@ def _build_pipeline_from_args(args: argparse.Namespace) -> DocumentBuildPipeline
             skill_taxonomy_path=str(getattr(args, "skill_taxonomy", "") or "").strip(),
             taxonomy=taxonomy,
         ),
+        taxonomy=taxonomy,
     )
 
 
@@ -430,7 +443,7 @@ def _base_metadata(args: argparse.Namespace) -> Dict[str, Any]:
     md = {"channel": "offline_extract_from_doc", "source_type": str(args.source_type or "").strip() or "document"}
     if str(args.hint or "").strip():
         md["hint"] = str(args.hint).strip()
-    _, resolved_family, resolved_axis, resolved_profile_id = _resolve_taxonomy_context(
+    taxonomy, resolved_family, resolved_axis, resolved_profile_id = _resolve_taxonomy_context(
         domain=str(getattr(args, "domain", "") or "").strip(),
         domain_type=str(getattr(args, "domain_type", "") or "").strip(),
         skill_taxonomy_path=str(getattr(args, "skill_taxonomy", "") or "").strip(),
@@ -445,6 +458,10 @@ def _base_metadata(args: argparse.Namespace) -> Dict[str, Any]:
         md["profile_id"] = resolved_profile_id
     if resolved_axis:
         md["taxonomy_axis"] = resolved_axis
+    md["domain_root_name"] = taxonomy.domain_root_name()
+    md["domain_root_id"] = taxonomy.domain_root_id()
+    md["family_bucket_label"] = taxonomy.family_bucket_label()
+    md["visible_levels"] = dict(taxonomy.to_dict().get("visible_levels") or {})
     if str(getattr(args, "domain_type", "") or getattr(args, "domain", "") or "").strip():
         md["domain_type"] = str(getattr(args, "domain_type", "") or getattr(args, "domain", "")).strip()
     return md
@@ -469,6 +486,24 @@ def _ingest_for_cli(
         max_documents=int(args.max_documents or 0),
         extract_strategy=normalize_extract_strategy(args.extract_strategy),
     )
+
+
+def _resolved_run_metadata(
+    pipeline: DocumentBuildPipeline,
+    *,
+    args: argparse.Namespace,
+    documents: Sequence[DocumentRecord],
+) -> Dict[str, Any]:
+    """Resolves family/domain metadata after ingest for stage-oriented commands."""
+
+    resolved = pipeline.resolve_run_metadata(
+        documents=list(documents or []),
+        metadata=_base_metadata(args),
+    )
+    resolved = compact_metadata(resolved)
+    for document in list(documents or []):
+        document.metadata.update(resolved)
+    return resolved
 
 
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
@@ -791,7 +826,12 @@ def _run_ingest(args: argparse.Namespace) -> None:
 
     pipeline = _build_pipeline_from_args(args)
     result = _ingest_for_cli(pipeline, args, dry_run=bool(args.dry_run))
+    resolved_md = _resolved_run_metadata(pipeline, args=args, documents=result.documents)
     payload = {
+        "family_name": str(resolved_md.get("family_name") or "").strip() or None,
+        "family_id": str(resolved_md.get("family_id") or "").strip() or None,
+        "profile_id": str(resolved_md.get("profile_id") or "").strip() or None,
+        "domain_root_name": str(resolved_md.get("domain_root_name") or "").strip() or None,
         "text_units": [unit.to_dict() for unit in list(result.text_units or [])],
         "documents": [_plain_document(doc) for doc in list(result.documents or [])],
         "skipped_documents": [_plain_document(doc) for doc in list(result.skipped_documents or [])],
@@ -816,8 +856,13 @@ def _run_extract(args: argparse.Namespace) -> None:
 
     pipeline = _build_pipeline_from_args(args)
     ingest_result = _ingest_for_cli(pipeline, args, dry_run=bool(args.dry_run))
+    resolved_md = _resolved_run_metadata(pipeline, args=args, documents=ingest_result.documents)
     extracted_result = pipeline.extract_skills(documents=ingest_result.documents, windows=ingest_result.windows)
     payload = {
+        "family_name": str(resolved_md.get("family_name") or "").strip() or None,
+        "family_id": str(resolved_md.get("family_id") or "").strip() or None,
+        "profile_id": str(resolved_md.get("profile_id") or "").strip() or None,
+        "domain_root_name": str(resolved_md.get("domain_root_name") or "").strip() or None,
         "documents": [_plain_document(doc) for doc in list(ingest_result.documents or [])],
         "skipped_documents": [_plain_document(doc) for doc in list(ingest_result.skipped_documents or [])],
         "windows": [_plain_window(window) for window in list(ingest_result.windows or [])],
@@ -844,6 +889,7 @@ def _run_compile(args: argparse.Namespace) -> None:
 
     pipeline = _build_pipeline_from_args(args)
     ingest_result = _ingest_for_cli(pipeline, args, dry_run=True)
+    resolved_md = _resolved_run_metadata(pipeline, args=args, documents=ingest_result.documents)
     extracted_result = pipeline.extract_skills(documents=ingest_result.documents, windows=ingest_result.windows)
     compiled_result = pipeline.compile_skills(
         skill_drafts=extracted_result.skill_drafts,
@@ -851,6 +897,10 @@ def _run_compile(args: argparse.Namespace) -> None:
         target_state=_coerce_state(str(args.target_state or ""), default=VersionState.DRAFT),
     )
     payload = {
+        "family_name": str(resolved_md.get("family_name") or "").strip() or None,
+        "family_id": str(resolved_md.get("family_id") or "").strip() or None,
+        "profile_id": str(resolved_md.get("profile_id") or "").strip() or None,
+        "domain_root_name": str(resolved_md.get("domain_root_name") or "").strip() or None,
         "documents": [_plain_document(doc) for doc in list(ingest_result.documents or [])],
         "skipped_documents": [_plain_document(doc) for doc in list(ingest_result.skipped_documents or [])],
         "windows": [_plain_window(window) for window in list(ingest_result.windows or [])],
@@ -880,18 +930,36 @@ def _run_diag(args: argparse.Namespace) -> None:
     """Runs the non-persisting diagnostic extract flow."""
 
     pipeline = _build_pipeline_from_args(args)
-    payload = run_document_diag(
-        pipeline=pipeline,
+    diag_metadata = _base_metadata(args)
+    ingest_result = pipeline.ingest_document(
         file_path=str(args.file or "").strip(),
         title=str(args.title or "").strip(),
         source_type=str(args.source_type or "").strip() or "document",
         domain=str(args.domain or "").strip(),
-        metadata=_base_metadata(args),
+        metadata=diag_metadata,
+        continue_on_error=bool(args.continue_on_error),
+        dry_run=True,
+        max_documents=int(args.max_documents or 0),
+        extract_strategy=normalize_extract_strategy(args.extract_strategy),
+    )
+    resolved_md = compact_metadata(
+        pipeline.resolve_run_metadata(documents=ingest_result.documents, metadata=diag_metadata)
+    )
+    for document in list(ingest_result.documents or []):
+        document.metadata.update(resolved_md)
+    payload = run_document_diag(
+        pipeline=pipeline,
+        file_path="",
+        title="",
+        source_type=str(args.source_type or "").strip() or "document",
+        domain=str(args.domain or "").strip(),
+        metadata=resolved_md,
         continue_on_error=bool(args.continue_on_error),
         max_documents=int(args.max_documents or 0),
         extract_strategy=normalize_extract_strategy(args.extract_strategy),
         report_path=str(args.report_path or "").strip(),
         report_limit=int(args.report_limit or 0),
+        pre_ingested=ingest_result,
     )
     if bool(args.json):
         _print_json(payload)
@@ -980,6 +1048,7 @@ def _run_canonical_merge(args: argparse.Namespace) -> None:
             "route": "canonical_merge",
             "profile_id": profile_id or None,
             "family_id": family_name or None,
+            "family_name": family_name or None,
             "child_type": child_type or None,
             "run_id": resolved.get("run_id"),
             "skills": [],
@@ -1011,7 +1080,7 @@ def _run_canonical_merge(args: argparse.Namespace) -> None:
     print("Canonical merge staging loaded.")
     print(
         f"profile={payload.get('profile_id') or ''} "
-        f"family={payload.get('family_id') or ''} "
+        f"family={payload.get('family_name') or payload.get('family_id') or ''} "
         f"child_type={payload.get('child_type') or ''} "
         f"run_id={payload.get('run_id') or ''}"
     )

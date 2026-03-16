@@ -669,6 +669,16 @@ class LLMDocumentSkillExtractor:
         )
         tags = compact_text_list(coerce_str_list(item.get("tags")), limit=6)
         triggers = compact_text_list(coerce_str_list(item.get("triggers")), limit=5)
+        asset_type = self.taxonomy.normalize_asset_type(item.get("asset_type"))
+        asset_node = self.taxonomy.resolve_asset_node(
+            requested=item.get("asset_node_id"),
+            asset_type=asset_type,
+            metadata=dict(item),
+        )
+        asset_node_id = str(getattr(asset_node, "node_id", "") or "").strip()
+        asset_path = self.taxonomy.asset_path(asset_node_id)
+        asset_level = int(getattr(asset_node, "level", 0) or 0)
+        visible_role = str(getattr(asset_node, "visible_role", "") or "").strip()
         draft = SkillDraft(
             draft_id=_draft_identity_seed(
                 doc_id=record.doc_id,
@@ -680,8 +690,13 @@ class LLMDocumentSkillExtractor:
             doc_id=record.doc_id,
             name=name,
             description=description,
-            asset_type=self.taxonomy.normalize_asset_type(item.get("asset_type")),
+            asset_type=asset_type,
             granularity=str(item.get("granularity") or "").strip(),
+            asset_node_id=asset_node_id,
+            asset_path=asset_path,
+            asset_level=asset_level,
+            visible_role=visible_role,
+            hierarchy_status="unresolved",
             objective=objective,
             domain=str(item.get("domain") or record.domain or "").strip(),
             task_family=str(item.get("task_family") or "").strip(),
@@ -708,6 +723,10 @@ class LLMDocumentSkillExtractor:
                 "extraction_unit": unit_type,
                 "domain_type": self.taxonomy.domain_type,
                 "taxonomy_id": self.taxonomy.taxonomy_id,
+                "asset_node_id": asset_node_id,
+                "asset_path": asset_path,
+                "asset_level": asset_level,
+                "visible_role": visible_role,
                 **dict(unit_metadata or {}),
             },
         )
@@ -728,6 +747,10 @@ class LLMDocumentSkillExtractor:
                 "skill_name": name,
                 "asset_type": draft.asset_type,
                 "granularity": draft.granularity,
+                "asset_node_id": asset_node_id,
+                "asset_path": asset_path,
+                "asset_level": asset_level,
+                "visible_role": visible_role,
                 "objective": draft.objective,
                 "task_family": draft.task_family,
                 "method_family": draft.method_family,
