@@ -1,0 +1,36 @@
+{
+  "schema": "autoskill.document.parent_children_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "domain_root_name": "心理咨询",
+  "family_name": "认知行为疗法",
+  "profile_id": "psychology::认知行为疗法",
+  "taxonomy_axis": "疗法",
+  "parent_skill_id": "9abef97e-6dec-512d-92b6-48677d8f4282",
+  "parent_name": "贝克认知疗法核心干预流程",
+  "children": [
+    {
+      "skill_id": "65405bcf-cecc-50b5-91d3-9d17a11cc792",
+      "name": "三栏表引导式自动思维识别",
+      "description": "在情绪激动或思维混乱情境下，通过结构化三栏表（情境-自动思维-情绪）引导来访者识别并命名自动化负性思维，为后续认知重构奠定基础。",
+      "child_type": "cognitive_restructuring",
+      "asset_node_id": "micro_intervention",
+      "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+      "asset_level": 3,
+      "parent_skill_id": "9abef97e-6dec-512d-92b6-48677d8f4282",
+      "level_label": "微技能",
+      "taxonomy_class": "认知行为疗法",
+      "applicable_when": "在情绪激动或思维混乱情境下，通过结构化三栏表（情境-自动思维-情绪）引导来访者识别并命名自动化负性思维，为后续认知重构奠定基础。",
+      "selector_terms": [
+        "来访者叙述人际事件后出现生理唤醒（如语速加快、呼吸急促、面部紧张）",
+        "来访者自述‘脑子一片空白’‘理不清头绪’‘越想越乱’",
+        "CBT",
+        "自动思维",
+        "三栏表",
+        "认知评估",
+        "结构化记录",
+        "三栏表引导式自动思维识别"
+      ],
+      "relative_path": "心理咨询/Family技能/认知行为疗法/微技能/三栏表引导式自动思维识别/SKILL.md"
+    }
+  ]
+}

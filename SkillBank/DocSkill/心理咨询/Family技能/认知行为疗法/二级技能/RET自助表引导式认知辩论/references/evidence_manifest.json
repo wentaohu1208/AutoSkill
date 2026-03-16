@@ -1,0 +1,68 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "f4482c6f-35d9-5e26-89d9-b5f6368e48bd",
+  "skill_name": "RET自助表引导式认知辩论",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "84725f94-e6a7-5cb0-b9a0-3a85e9fe9456",
+      "doc_id": "df0c1628-fa32-54ae-b861-2583ccd272f7",
+      "document_title": "1例一般心理问题咨询案例_马秀花.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例一般心理问题咨询案例_马秀花.md",
+      "section": "6.4第四次：心理咨询阶段",
+      "span": {
+        "start": 6857,
+        "end": 7296
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "（1）目的：辩论并解决咨询者和自身的不合理信念；针对未被实习企业留任的经历，改变原有的极端化、过分概括化、极端小计划等等不合理信念，建立合理正确的认知。（2）方法：会谈法，合理情绪疗法。（3）咨询过程： $\\textcircled{1}$ 反馈家庭作业：咨询者在完成家庭作业时表现认真。通过使用RET自助表的练习，咨询者取得了明显的进步，既提升了理性思维，也改善了情绪状态。 $\\textcircled{2}$ 根据求助者完成的家庭作业，将进一步分析未被实习企业留任这一经历中的不合理信念，并鼓励咨询者用合理的信念代替不合理的认知。 $\\textcircled{3}$ 家庭作业：将要求咨询者继续进行腹式呼吸放松法的练习，并将其应用于情绪改善中。另外，咨询者还将被要求继续练习RET自助表中的内容，并尝试应用于生活中的其他事情上。\n\n本次咨询小结：在本次咨询中，咨询者取得了显著的进展，成功地完成了RET自助表的任务，并能够与自己的不合理信念辩论，用合理的信念代替不合理的认知。",
+      "metadata": {
+        "document_title": "1例一般心理问题咨询案例_马秀花.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "RET自助表引导式认知辩论",
+        "asset_type": "session_skill",
+        "granularity": "session",
+        "asset_node_id": "session_framework",
+        "asset_path": "family_root/treatment_framework/session_framework",
+        "asset_level": 2,
+        "visible_role": "parent",
+        "objective": "通过结构化认知辩论，帮助来访者用合理信念替代不合理信念，提升理性思维与情绪调节能力。",
+        "task_family": "cognitive_restructuring",
+        "method_family": "CBT",
+        "stage": "intervention",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "f90ee644-1878-5c8e-b6c0-f2990e0426dd",
+        "window_strategy": "strict",
+        "anchor_hits": [
+          "会谈",
+          "家庭作业",
+          "作业"
+        ],
+        "paragraph_start": 0,
+        "paragraph_end": 1,
+        "heading_path": [
+          "6.4第四次：心理咨询阶段"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例一般心理问题咨询案例",
+          "1.1人口学资料",
+          "1.2个人成长史",
+          "2.1主诉",
+          "2.2个人陈述",
+          "3.1咨询前心理测验结果"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "（1）目的：辩论并解决咨询者和自身的不合理信念；针对未被实习企业留任的经历，改变原有的极端化、过分概括化、极端小计划等等不合理信念，建立合理正确的认知。（2）方法：会谈法，合理情绪疗法。（3）咨询过程： $\\textcircled{1}$ 反馈家庭作业：咨询者在完成家庭作业时表现认真。通过使用RET自助表的练习，咨询者取得了明显的进步，既提升了理性思维，也改"
+      }
+    }
+  ]
+}

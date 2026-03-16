@@ -1,0 +1,68 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "61656cca-fdc7-5573-9561-ccba53179aed",
+  "skill_name": "CBT人际焦虑暴露分级任务工作流程",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "07be47ee-f327-51d6-9b49-0b4aed2a10aa",
+      "doc_id": "b5b97cc6-9ef0-573c-8d75-cca96570f3b1",
+      "document_title": "1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+      "section": "6 总结与反思",
+      "span": {
+        "start": 7920,
+        "end": 8338
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "本例咨询是由学生焦虑情绪所引发的人际交往适应不良的一般心理问题。在良好咨访关系基础上，材料收集较为完整。来访者开始较难准确找到自动思维，但其主动性强，在反复家庭作业练习后能较快、较准找到自动思维，对较好达成咨询目标起到良好作用。经过十余次咨询，一方面，Z能认识到对他人产生敌意的不合理认知，就“他人语气、态度不好”做出认知调整，能以更加全面、富有弹性视角看待问题，较好改善其人际关系和焦虑情绪。另一方面，采用现实暴露对其回避行为进行了调整，让Z在暴露情境中不采取任何形式的回避行为，耐受焦虑情绪，看到自己所担心的事情没有发生，并鼓励、强化和维持其改变的动机，在每个等级反复暴露，直到不再焦虑再过渡到下一等级的暴露任务，从而为其今后人际交往形成适应性行为模式奠定了基础。\n\n世界表象，比如游戏中儿童会进行角色扮演等方式来将自己脑中的想法表达出来，所以，家长需要鼓励儿童多多参与游戏，并且陪伴他发现周围更多的表象，以助于儿童发展创造性思维。",
+      "metadata": {
+        "document_title": "1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "CBT人际焦虑暴露分级任务工作流程",
+        "asset_type": "session_skill",
+        "granularity": "session",
+        "asset_node_id": "session_framework",
+        "asset_path": "family_root/treatment_framework/session_framework",
+        "asset_level": 2,
+        "visible_role": "parent",
+        "objective": "降低人际情境中的回避行为，建立对焦虑耐受与结果可预测性的新经验",
+        "task_family": "behaviorism",
+        "method_family": "CBT（认知行为疗法）",
+        "stage": "behavioral_activation",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "f87a0e75-dafc-5415-8320-42d779ece160",
+        "window_strategy": "strict",
+        "anchor_hits": [
+          "咨询目标",
+          "家庭作业",
+          "作业"
+        ],
+        "paragraph_start": 0,
+        "paragraph_end": 1,
+        "heading_path": [
+          "6 总结与反思"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例人际适应不良引发焦虑情绪咨询案例报告",
+          "1.1来访者基本信息",
+          "1.2对来访者的初始印象",
+          "1.3来访者主诉",
+          "1.4成长经历",
+          "1.5主要问题"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "本例咨询是由学生焦虑情绪所引发的人际交往适应不良的一般心理问题。在良好咨访关系基础上，材料收集较为完整。来访者开始较难准确找到自动思维，但其主动性强，在反复家庭作业练习后能较快、较准找到自动思维，对较好达成咨询目标起到良好作用。经过十余次咨询，一方面，Z能认识到对他人产生敌意的不合理认知，就“他人语气、态度不好”做出认知调整，能以更加全面、富有弹性视角看待问"
+      }
+    }
+  ]
+}

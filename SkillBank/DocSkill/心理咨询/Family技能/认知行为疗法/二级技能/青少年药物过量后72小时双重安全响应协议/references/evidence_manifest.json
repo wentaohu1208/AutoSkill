@@ -1,0 +1,64 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "fd7b1eef-f95a-57c4-aca1-0390262570d6",
+  "skill_name": "青少年药物过量后72小时双重安全响应协议",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "bce65915-a520-5e96-82c0-57b3101e2479",
+      "doc_id": "a4e0f4fc-2629-5879-8261-0e924c2c0418",
+      "document_title": "1例初中生抑郁症心理咨询案例_武香芝.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例初中生抑郁症心理咨询案例_武香芝.md",
+      "section": "1.2 主诉与个人陈述",
+      "span": {
+        "start": 436,
+        "end": 696
+      },
+      "relation_type": "constraint",
+      "confidence": 0.98,
+      "quote": "1.2.1主诉：近两周情绪低落、想哭、厌食、睡眠不好、不想学习、觉得活着没意思。每天看手机打发时光。最近学校规定不允许带手机，自己觉得离开手机很孤独，就偷偷把手机带到学校，但是被老师发现了，并没收，还将此事告知了母亲。母亲很生气，打了求助者两个耳光，还骂求助者“不听话、丢人”。求助者无法想开，萌生了想要离开这个世界的想法，就把母亲平时服用的20片安眠药喝下去了。喝完后想到母亲曾经给自己买过保险，想让母亲领取保险金，所以告诉同学在自己死后，让母亲去领取保险金。同学得知后立即拨打了120急救电话，经抢救后脱离生命危险。",
+      "metadata": {
+        "document_title": "1例初中生抑郁症心理咨询案例_武香芝.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "青少年自杀意念与药物过量后即刻安全响应协议",
+        "asset_type": "safety_rule",
+        "granularity": "session",
+        "asset_node_id": "safety_micro",
+        "asset_path": "family_root/safety_module/safety_micro",
+        "asset_level": 2,
+        "visible_role": "leaf",
+        "objective": "阻断再发自杀行为，确保72小时内物理与心理双重安全",
+        "task_family": "crisis_intervention",
+        "method_family": "CBT",
+        "stage": "crisis_stabilization",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "f467035d-32c4-5c71-a248-c8c018654460",
+        "window_strategy": "strict",
+        "anchor_hits": [],
+        "paragraph_start": 0,
+        "paragraph_end": 0,
+        "heading_path": [
+          "1.2 主诉与个人陈述"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例初中生抑郁症心理咨询案例",
+          "1.1求助者一般资料",
+          "1.3对个案初始印象",
+          "2.1心理测验结果",
+          "2.2评估与诊断",
+          "3.1理论依据"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "1.2.1主诉：近两周情绪低落、想哭、厌食、睡眠不好、不想学习、觉得活着没意思。每天看手机打发时光。最近学校规定不允许带手机，自己觉得离开手机很孤独，就偷偷把手机带到学校，但是被老师发现了，并没收，还将此事告知了母亲。母亲很生气，打了求助者两个耳光，还骂求助者“不听话、丢人”。求助者无法想开，萌生了想要离开这个世界的想法，就把母亲平时服用的20片安眠药喝下去"
+      }
+    }
+  ]
+}

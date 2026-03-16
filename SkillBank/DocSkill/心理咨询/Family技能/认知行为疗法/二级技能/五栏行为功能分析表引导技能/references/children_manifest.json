@@ -1,0 +1,36 @@
+{
+  "schema": "autoskill.document.parent_children_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "domain_root_name": "心理咨询",
+  "family_name": "认知行为疗法",
+  "profile_id": "psychology::认知行为疗法",
+  "taxonomy_axis": "疗法",
+  "parent_skill_id": "d641f748-c9e7-5c7b-8ec7-6d5e2d90eda4",
+  "parent_name": "五栏行为功能分析表引导技能",
+  "children": [
+    {
+      "skill_id": "9cc9817a-70ff-5337-a6d9-43e803833956",
+      "name": "回避行为心理教育微干预",
+      "description": "向来访者简明解释回避行为如何阻断习惯化过程，并用神经可塑性语言说明‘耐受即消退’的生理机制，强化暴露必要性。",
+      "child_type": "psychoeducation",
+      "asset_node_id": "micro_intervention",
+      "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+      "asset_level": 3,
+      "parent_skill_id": "d641f748-c9e7-5c7b-8ec7-6d5e2d90eda4",
+      "level_label": "微技能",
+      "taxonomy_class": "认知行为疗法",
+      "applicable_when": "向来访者简明解释回避行为如何阻断习惯化过程，并用神经可塑性语言说明‘耐受即消退’的生理机制，强化暴露必要性。",
+      "selector_terms": [
+        "来访者提出或尝试回避行为",
+        "暴露中焦虑升高时寻求缓解策略",
+        "对暴露效果产生怀疑",
+        "CBT",
+        "心理教育",
+        "习惯化",
+        "回避行为",
+        "回避行为心理教育微干预"
+      ],
+      "relative_path": "心理咨询/Family技能/认知行为疗法/微技能/回避行为心理教育微干预/SKILL.md"
+    }
+  ]
+}

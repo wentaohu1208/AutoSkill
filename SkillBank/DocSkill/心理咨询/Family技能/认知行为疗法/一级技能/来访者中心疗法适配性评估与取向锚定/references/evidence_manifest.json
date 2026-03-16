@@ -1,0 +1,64 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "8443b094-0d08-5ee4-8cfe-413483081f4a",
+  "skill_name": "来访者中心疗法适配性评估与取向锚定",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "de2fe2ed-cdad-5e1d-90fd-e6bc3e4a3a7a",
+      "doc_id": "4b031c1d-9d0c-5b64-84cc-53e740c36640",
+      "document_title": "1例人际交往障碍心理咨询案例报告_李婕.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例人际交往障碍心理咨询案例报告_李婕.md",
+      "section": "6.3来访者中心疗法",
+      "span": {
+        "start": 3206,
+        "end": 3390
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "来访者中心治疗法认为当事人有理解自己并解决自己问题的能力，无须咨询师直接干预，人能够通过自我引导而促进自身成长[3]。该疗法的核心是：人是完全可以信任的，且人具有自我实现和成长的能力，强调的是人的建设性功能。本案例中的来访者认知能力强，接受能力强，语言表达能力强，对自己的剖析十分透彻。当遇到情绪问题困扰时，会主动寻找方法进行自我调节，如听歌、运动、阅读心理类书籍等。",
+      "metadata": {
+        "document_title": "1例人际交往障碍心理咨询案例报告_李婕.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "来访者中心疗法核心原则",
+        "asset_type": "knowledge_reference",
+        "granularity": "session",
+        "asset_node_id": "",
+        "asset_path": "",
+        "asset_level": 0,
+        "visible_role": "",
+        "objective": "为咨询师提供来访者中心疗法的核心信条与适用判据，支撑治疗取向选择决策",
+        "task_family": "通用心理咨询",
+        "method_family": "Humanistic Existentialist（人本-存在主义）",
+        "stage": "assessment_and_orientation",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "b8f1f8b3-6c4d-5b61-95de-3954e68ab842",
+        "window_strategy": "strict",
+        "anchor_hits": [],
+        "paragraph_start": 0,
+        "paragraph_end": 0,
+        "heading_path": [
+          "6.3来访者中心疗法"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例人际交往障碍心理咨询案例报告",
+          "1.1人口学资料",
+          "1.2个人成长史",
+          "1.3 精神状态",
+          "1.4身体状态",
+          "1.5 社会功能"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "来访者中心治疗法认为当事人有理解自己并解决自己问题的能力，无须咨询师直接干预，人能够通过自我引导而促进自身成长[3]。该疗法的核心是：人是完全可以信任的，且人具有自我实现和成长的能力，强调的是人的建设性功能。本案例中的来访者认知能力强，接受能力强，语言表达能力强，对自己的剖析十分透彻。当遇到情绪问题困扰时，会主动寻找方法进行自我调节，如听歌、运动、阅读心理类"
+      }
+    }
+  ]
+}

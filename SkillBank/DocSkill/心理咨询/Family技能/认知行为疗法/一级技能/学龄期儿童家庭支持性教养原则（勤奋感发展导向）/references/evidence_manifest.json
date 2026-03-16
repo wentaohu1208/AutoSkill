@@ -1,0 +1,66 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "0aa7b2ca-7f70-5e91-a538-858b0856c9fa",
+  "skill_name": "学龄期儿童家庭支持性教养原则（勤奋感发展导向）",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "60b167f8-f590-52db-8ece-38fafbaf10da",
+      "doc_id": "b5b97cc6-9ef0-573c-8d75-cca96570f3b1",
+      "document_title": "1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+      "section": "5 学龄期（6、7\\~12岁）",
+      "span": {
+        "start": 8885,
+        "end": 9197
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "平等沟通，尊重孩子。在孩子面前不要使用咆哮、讽刺等一些简单粗暴的情绪发泄方式，这些行为会对儿童的心理留下不可逆转的伤害，甚至会损害他们的自尊发展。如果儿童的想法经常遭到家长的批评或者讽刺，儿童会缺乏自信甚至自卑，会导致自尊心受损。为了避免上述情况的发生，家长应该要学会控制自己的情绪，积极乐观地处理生活中的挫折。其次，家长也需要增加和孩子之间的交流，以成年人之间对话的方式，倾听孩子的心声，鼓励孩子勇敢表达，还不是包办式教育，尤其在教育孩子方面要有足够的耐心和信心。\n\n不可唯成绩论。在这一阶段，要明确，对孩子最重要的教育是培养他良好的学习习惯以及动力，还不是只关心学习成绩，要尊重孩子的兴趣的多样化，鼓励其发展健康的人格。",
+      "metadata": {
+        "document_title": "1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "学龄期儿童家庭沟通与教育原则",
+        "asset_type": "knowledge_reference",
+        "granularity": "session",
+        "asset_node_id": "",
+        "asset_path": "",
+        "asset_level": 0,
+        "visible_role": "",
+        "objective": "提升家长对学龄期儿童心理发展需求的理解，并内化支持性教养行为准则",
+        "task_family": "parent_coaching",
+        "method_family": "CBT",
+        "stage": "psychoeducation",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "40e65c6c-a327-5ab2-b1fe-c38bac56892c",
+        "window_strategy": "strict",
+        "anchor_hits": [
+          "阶段"
+        ],
+        "paragraph_start": 4,
+        "paragraph_end": 5,
+        "heading_path": [
+          "5 学龄期（6、7\\~12岁）"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例人际适应不良引发焦虑情绪咨询案例报告",
+          "1.1来访者基本信息",
+          "1.2对来访者的初始印象",
+          "1.3来访者主诉",
+          "1.4成长经历",
+          "1.5主要问题"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "这个阶段的儿童应在学校接受教育，学校是儿童活动的主要场所。学龄期的儿童主要面临的社会心理任务是克服自卑感，获得勤奋感，体验着能力的实现。儿童接受今后生活所必需的知识和技能的地方主要在学校，教师在这一阶段的儿童教育也起了不可替代的作用，此时家长很容易忽视自己在儿童成长过程中的指导作用。"
+      }
+    }
+  ]
+}

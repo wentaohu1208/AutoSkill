@@ -1,0 +1,64 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "0d01a5cd-58b0-5be8-9ae6-0aa42710b810",
+  "skill_name": "CBT人际适应不良焦虑干预框架",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "04c2148c-303d-5bae-8b09-cb81a6b873ea",
+      "doc_id": "b5b97cc6-9ef0-573c-8d75-cca96570f3b1",
+      "document_title": "1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+      "section": "1例人际适应不良引发焦虑情绪咨询案例报告",
+      "span": {
+        "start": 33,
+        "end": 382
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "1.内蒙古财经大学，内蒙古 呼和浩特010000；2.包头医学院，内蒙古 包头014040\n\n[摘要]本文报告了1例大二年级女生由人际关系问题引发焦虑情绪的心理咨询案例。咨询师通过共情、尊重、积极关注等技术与来访者建立良好的咨访关系。在此基础上，运用认知行为疗法帮助其更好地了解自身不合理信念，同时对其回避行为进行调整，发展出更理性、具有适应性的想法和行为，缓解焦虑情绪。经过11次心理咨询，Z的焦虑情绪得到有效缓解，失眠早醒症状得到改善，自我价值感提升，能主动尝试改善亲子关系，积极融入集体生活中，咨询效果较为明显。\n\n[关键词]认知行为疗法；现实暴露；焦虑情绪；人际适应不良；心理咨询 [中图分类号]B84[文献标识码]A doi:10.19738/j.cnki.psy.2024.02.054",
+      "metadata": {
+        "document_title": "1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "CBT人际适应不良焦虑干预框架",
+        "asset_type": "macro_protocol",
+        "granularity": "macro",
+        "asset_node_id": "treatment_framework",
+        "asset_path": "family_root/treatment_framework",
+        "asset_level": 1,
+        "visible_role": "parent",
+        "objective": "系统缓解人际适应不良引发的焦虑情绪，重建适应性认知与行为模式",
+        "task_family": "心理咨询",
+        "method_family": "CBT（认知行为疗法）",
+        "stage": "全程干预",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "99154bd0-d7f1-59e7-8887-4f3c53b9bb73",
+        "window_strategy": "strict",
+        "anchor_hits": [],
+        "paragraph_start": 1,
+        "paragraph_end": 3,
+        "heading_path": [
+          "1例人际适应不良引发焦虑情绪咨询案例报告"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1.1来访者基本信息",
+          "1.2对来访者的初始印象",
+          "1.3来访者主诉",
+          "1.4成长经历",
+          "1.5主要问题",
+          "1.6心理评估"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "张小梅石茹2\\*"
+      }
+    }
+  ]
+}

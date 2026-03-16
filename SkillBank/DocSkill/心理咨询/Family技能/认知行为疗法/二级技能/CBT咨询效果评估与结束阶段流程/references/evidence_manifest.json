@@ -1,0 +1,66 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "bf8e2217-f988-5b3e-8be1-c07552c0be4c",
+  "skill_name": "CBT咨询效果评估与结束阶段流程",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "1cbc2816-66e3-5734-b1ca-7dc6d67ece92",
+      "doc_id": "df0c1628-fa32-54ae-b861-2583ccd272f7",
+      "document_title": "1例一般心理问题咨询案例_马秀花.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例一般心理问题咨询案例_马秀花.md",
+      "section": "6.5 第五次：巩固和结束阶段",
+      "span": {
+        "start": 8315,
+        "end": 8486
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "$\\textcircled{4}$ 进行心理测验：为了评估咨询的效果，在结束咨询之前，使用了SAS和SDS来进行心理测验，与咨询开始时的测验情况进行对照。\n\n本次咨询小结：咨询者对于未被实习企业留任这件事情的认识有了很大程度的改变，烦躁、疲惫，经常心神不定、局促不安等不良情绪有了很大的改善；基本掌握了放松技巧，基本达到了近期咨询目标[5]。",
+      "metadata": {
+        "document_title": "1例一般心理问题咨询案例_马秀花.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "CBT咨询效果评估与结束阶段流程",
+        "asset_type": "session_skill",
+        "granularity": "session",
+        "asset_node_id": "session_framework",
+        "asset_path": "family_root/treatment_framework/session_framework",
+        "asset_level": 2,
+        "visible_role": "parent",
+        "objective": "系统化评估CBT干预效果、强化技能泛化、完成专业性咨询终止",
+        "task_family": "心理咨询",
+        "method_family": "CBT（认知行为疗法）",
+        "stage": "巩固与结束",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "049cd541-3db6-5b88-88fa-9a332a9a07c8",
+        "window_strategy": "strict",
+        "anchor_hits": [
+          "咨询目标"
+        ],
+        "paragraph_start": 14,
+        "paragraph_end": 15,
+        "heading_path": [
+          "6.5 第五次：巩固和结束阶段"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例一般心理问题咨询案例",
+          "1.1人口学资料",
+          "1.2个人成长史",
+          "2.1主诉",
+          "2.2个人陈述",
+          "3.1咨询前心理测验结果"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "（1）目的：巩固咨询效果；结束咨询。（2）方法：心理测验，会谈法。（3）咨询过程： $\\textcircled{1}$ 反馈家庭作业：对求助者在家庭作业中的表现给予了积极的反馈。求助者成功地应用了腹式呼吸方法来帮助自己入睡，并且能够应用于改善自己的不良情绪中，取得了很好的效果；此外，求助者在RET的练习中也展现了出色的实用性，鼓励他以后要经常练习，因为这可以"
+      }
+    }
+  ]
+}

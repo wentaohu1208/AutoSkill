@@ -1,0 +1,17 @@
+# CBT初始阶段：咨访关系建立与认知模型启蒙 Evidence
+
+- family: 认知行为疗法
+- skill_id: c3d2ecfa-cad4-589a-a8e1-c05a9fbc8bc9
+- support_count: 1
+
+## Evidence 1
+
+- support_id: e9e66f02-096d-5bd3-97b2-5965c50b6454
+- relation_type: support
+- document: 1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md
+- doc_id: b5b97cc6-9ef0-573c-8d75-cca96570f3b1
+- source_file: /Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md
+- section: 4.1第一阶段：咨访关系的建立与问题评估阶段（第1～3次）
+- span: 3459:3708
+- confidence: 0.95
+- quote: 此阶段重点在于建立良好咨访关系。首先采用罗杰斯以来访者为中心的疗法，在咨询过程中贯注真诚、共情、无条件积极关注，让Z在一个温暖、安全的环境中缓解焦虑情绪。其次收集Z的基本信息，包括成长经历、人际关系，并进行心境检查了解最近一周情绪强烈程度，从而列出Z最想解决的问题清单以及做出评估。最后，针对Z的想法进行初步的认知心理教育，向Z介绍“认知三角”，即认知、情绪和行为，我们对事情的看法才是导致情绪和行为的关键因素，改变自身在人际互动中的想法，将自身消极思维方式转化为积极应对技巧，可以改变情绪和感受。

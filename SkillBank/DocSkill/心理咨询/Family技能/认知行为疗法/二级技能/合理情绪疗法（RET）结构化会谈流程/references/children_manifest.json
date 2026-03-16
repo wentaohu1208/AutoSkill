@@ -1,0 +1,108 @@
+{
+  "schema": "autoskill.document.parent_children_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "domain_root_name": "心理咨询",
+  "family_name": "认知行为疗法",
+  "profile_id": "psychology::认知行为疗法",
+  "taxonomy_axis": "疗法",
+  "parent_skill_id": "667f21b2-3f23-5b5a-b5ac-4bef1e9eaf3f",
+  "parent_name": "合理情绪疗法（RET）结构化会谈流程",
+  "children": [
+    {
+      "skill_id": "e329c85e-2e88-5873-898b-b5446b901e35",
+      "name": "不合理信念苏格拉底式辩论微技能",
+      "description": "针对人际障碍来访者，在会谈中实施的标准化REBT辩论步骤：通过系列开放式提问，引导其自主检验不合理信念的逻辑漏洞与实证基础。",
+      "child_type": "心理咨询",
+      "asset_node_id": "micro_intervention",
+      "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+      "asset_level": 3,
+      "parent_skill_id": "667f21b2-3f23-5b5a-b5ac-4bef1e9eaf3f",
+      "level_label": "微技能",
+      "taxonomy_class": "认知行为疗法",
+      "applicable_when": "针对人际障碍来访者，在会谈中实施的标准化REBT辩论步骤：通过系列开放式提问，引导其自主检验不合理信念的逻辑漏洞与实证基础。",
+      "selector_terms": [
+        "来访者使用‘必须’‘应该’‘永远’‘肯定’等绝对化语言",
+        "伴随焦虑升高或回避行为加剧",
+        "REBT",
+        "认知辩论",
+        "苏格拉底提问",
+        "微技能",
+        "不合理信念苏格拉底式辩论微技能"
+      ],
+      "relative_path": "心理咨询/Family技能/认知行为疗法/微技能/不合理信念苏格拉底式辩论微技能/SKILL.md"
+    },
+    {
+      "skill_id": "c1e6015b-ead3-511d-91b4-000decd7d55e",
+      "name": "与不合理信念辩论技术",
+      "description": "基于艾利斯合理情绪疗法（ABC理论）的核心干预，引导来访者识别并主动质疑其非理性信念，通过逻辑质询、证据检验与替代性重构，促使其觉察信念与情绪反应间的中介关系，并建立更适应性的认知。",
+      "child_type": "cognitive_restructuring",
+      "asset_node_id": "micro_intervention",
+      "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+      "asset_level": 3,
+      "parent_skill_id": "667f21b2-3f23-5b5a-b5ac-4bef1e9eaf3f",
+      "level_label": "微技能",
+      "taxonomy_class": "认知行为疗法",
+      "applicable_when": "基于艾利斯合理情绪疗法（ABC理论）的核心干预，引导来访者识别并主动质疑其非理性信念，通过逻辑质询、证据检验与替代性重构，促使其觉察信念与情绪反应间的中介关系，并建立更适应性的认知。",
+      "selector_terms": [
+        "来访者表达绝对化、以偏概全、灾难化等非理性信念",
+        "情绪反应强度明显超过事件客观严重性",
+        "出现重复性人际回避或冲突行为",
+        "ABC理论",
+        "认知重构",
+        "辩论技术",
+        "CBT",
+        "与不合理信念辩论技术"
+      ],
+      "relative_path": "心理咨询/Family技能/认知行为疗法/微技能/与不合理信念辩论技术/SKILL.md"
+    },
+    {
+      "skill_id": "6522481a-4918-5639-838e-176ab10d5b2e",
+      "name": "亲子虚假责任归因的认知解构与去责化重构",
+      "description": "针对青少年抑郁来访者将父母婚姻维系、情绪痛苦等成人议题错误内化为自身责任的核心负性自动思维，提供基于CBT框架的结构化认知干预，实现责任归属澄清、情感确认与边界重建。",
+      "child_type": "认知重构",
+      "asset_node_id": "micro_intervention",
+      "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+      "asset_level": 3,
+      "parent_skill_id": "667f21b2-3f23-5b5a-b5ac-4bef1e9eaf3f",
+      "level_label": "微技能",
+      "taxonomy_class": "认知行为疗法",
+      "applicable_when": "针对青少年抑郁来访者将父母婚姻维系、情绪痛苦等成人议题错误内化为自身责任的核心负性自动思维，提供基于CBT框架的结构化认知干预，实现责任归属澄清、情感确认与边界重建。",
+      "selector_terms": [
+        "来访者表达‘要是我没有出生就好了’‘妈妈都是因为我才忍着’",
+        "心理测验显示高内疚感、低自我价值感",
+        "家庭叙事中存在父母冲突转嫁（如‘要不是为了你，早离婚了’）",
+        "认知重构",
+        "责任归属",
+        "青少年抑郁",
+        "CBT核心技术",
+        "亲子边界",
+        "内疚感干预",
+        "亲子虚假责任归因的认知解构与去责化重构"
+      ],
+      "relative_path": "心理咨询/Family技能/认知行为疗法/微技能/亲子虚假责任归因的认知解构与去责化重构/SKILL.md"
+    },
+    {
+      "skill_id": "55bcb215-4520-5918-8064-717c3f21363e",
+      "name": "苏格拉底式辩论引导不合理信念识别",
+      "description": "在CBT框架下，针对来访者‘必须被留任’‘不被留任=找不到工作’‘辜负父母’等典型非理性信念，运用结构化苏格拉底提问，促使其觉察极端化、过度概括化与灾难化思维模式。",
+      "child_type": "cognitive_restructuring",
+      "asset_node_id": "micro_intervention",
+      "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+      "asset_level": 3,
+      "parent_skill_id": "667f21b2-3f23-5b5a-b5ac-4bef1e9eaf3f",
+      "level_label": "微技能",
+      "taxonomy_class": "认知行为疗法",
+      "applicable_when": "在CBT框架下，针对来访者‘必须被留任’‘不被留任=找不到工作’‘辜负父母’等典型非理性信念，运用结构化苏格拉底提问，促使其觉察极端化、过度概括化与灾难化思维模式。",
+      "selector_terms": [
+        "来访者表达绝对化要求（如‘一定要’‘必须’）、以偏概全（如‘永远’‘全都’）、灾难化推论（如‘就完了’‘对不起所有人’）",
+        "CBT",
+        "合理情绪疗法",
+        "ABC理论",
+        "认知重构",
+        "苏格拉底辩论",
+        "苏格拉底式辩论引导不合理信念识别"
+      ],
+      "relative_path": "心理咨询/Family技能/认知行为疗法/微技能/苏格拉底式辩论引导不合理信念识别/SKILL.md"
+    }
+  ]
+}

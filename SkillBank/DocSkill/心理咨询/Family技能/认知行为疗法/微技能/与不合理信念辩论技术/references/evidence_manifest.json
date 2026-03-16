@@ -1,0 +1,67 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "c1e6015b-ead3-511d-91b4-000decd7d55e",
+  "skill_name": "与不合理信念辩论技术",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "31ba7546-9a7e-5927-9ed4-9f3e75875be5",
+      "doc_id": "4b031c1d-9d0c-5b64-84cc-53e740c36640",
+      "document_title": "1例人际交往障碍心理咨询案例报告_李婕.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例人际交往障碍心理咨询案例报告_李婕.md",
+      "section": "6.2合理情绪疗法",
+      "span": {
+        "start": 3038,
+        "end": 3190
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "艾利斯的合理情绪疗法（ABC理论）认为诱发事件本身不会引发人的情绪和行为，人对诱发事件所持有的信念才是造成情绪和行为反应的直接原因。该疗法的核心是：与不合理信念辩论，合理情绪想象技术和认知性家庭作业。本案例主要运用与不合理信念辩论技术，让来访者与自己所说的观点进行辩论，最后发现其不合理的信念并加以矫正。",
+      "metadata": {
+        "document_title": "1例人际交往障碍心理咨询案例报告_李婕.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "与不合理信念辩论技术",
+        "asset_type": "micro_skill",
+        "granularity": "micro",
+        "asset_node_id": "micro_intervention",
+        "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+        "asset_level": 3,
+        "visible_role": "leaf",
+        "objective": "矫正非理性信念，建立基于证据的适应性认知",
+        "task_family": "cognitive_restructuring",
+        "method_family": "CBT",
+        "stage": "intervention",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "7471cb64-b492-526b-93bb-1dd77181327a",
+        "window_strategy": "strict",
+        "anchor_hits": [
+          "家庭作业",
+          "作业"
+        ],
+        "paragraph_start": 0,
+        "paragraph_end": 0,
+        "heading_path": [
+          "6.2合理情绪疗法"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例人际交往障碍心理咨询案例报告",
+          "1.1人口学资料",
+          "1.2个人成长史",
+          "1.3 精神状态",
+          "1.4身体状态",
+          "1.5 社会功能"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "艾利斯的合理情绪疗法（ABC理论）认为诱发事件本身不会引发人的情绪和行为，人对诱发事件所持有的信念才是造成情绪和行为反应的直接原因。该疗法的核心是：与不合理信念辩论，合理情绪想象技术和认知性家庭作业。本案例主要运用与不合理信念辩论技术，让来访者与自己所说的观点进行辩论，最后发现其不合理的信念并加以矫正。"
+      }
+    }
+  ]
+}

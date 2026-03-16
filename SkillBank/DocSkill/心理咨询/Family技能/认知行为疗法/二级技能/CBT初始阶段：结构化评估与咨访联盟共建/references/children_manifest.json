@@ -1,0 +1,37 @@
+{
+  "schema": "autoskill.document.parent_children_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "domain_root_name": "心理咨询",
+  "family_name": "认知行为疗法",
+  "profile_id": "psychology::认知行为疗法",
+  "taxonomy_axis": "疗法",
+  "parent_skill_id": "40b91b28-32fe-5986-b502-82bbd220adfa",
+  "parent_name": "CBT初始阶段：结构化评估与咨访联盟共建",
+  "children": [
+    {
+      "skill_id": "587493d2-445d-5186-ba2a-782507b3935f",
+      "name": "负性自动想法识别作业（人际版）",
+      "description": "结构化家庭作业工具，用于引导来访者在自然人际情境中觉察、记录并初步标注负性自动想法，为后续认知重构提供原始素材。",
+      "child_type": "心理咨询",
+      "asset_node_id": "micro_intervention",
+      "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+      "asset_level": 3,
+      "parent_skill_id": "40b91b28-32fe-5986-b502-82bbd220adfa",
+      "level_label": "微技能",
+      "taxonomy_class": "认知行为疗法",
+      "applicable_when": "结构化家庭作业工具，用于引导来访者在自然人际情境中觉察、记录并初步标注负性自动想法，为后续认知重构提供原始素材。",
+      "selector_terms": [
+        "CBT初始阶段结束",
+        "来访者主诉含人际评价敏感",
+        "需积累认知素材进入第二阶段",
+        "CBT",
+        "家庭作业",
+        "自动想法",
+        "日记",
+        "结构化记录",
+        "负性自动想法识别作业（人际版）"
+      ],
+      "relative_path": "心理咨询/Family技能/认知行为疗法/微技能/负性自动想法识别作业（人际版）/SKILL.md"
+    }
+  ]
+}

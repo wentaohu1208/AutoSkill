@@ -1,0 +1,64 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "9abef97e-6dec-512d-92b6-48677d8f4282",
+  "skill_name": "贝克认知疗法核心干预流程",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "08769f63-65a3-58d6-b874-b7209742de4e",
+      "doc_id": "4b031c1d-9d0c-5b64-84cc-53e740c36640",
+      "document_title": "1例人际交往障碍心理咨询案例报告_李婕.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例人际交往障碍心理咨询案例报告_李婕.md",
+      "section": "6.1贝克认知疗法",
+      "span": {
+        "start": 2826,
+        "end": 3023
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "贝克认知疗法认为，认知产生了情绪及行为，异常的认知产生了异常的情绪及行为。该疗法的核心是：找到影响来访者的功能失调性假设和负性自动想法[2]。本案例主要运用贝克的识别负性自动想法和矫正技术，查找负性假设和不合理信念。该来访者在经历两次高考失利的负性事件后，开始对周围人的态度格外敏感，产生了自己必须做到完美，否则就会被否定的负性假设。主要是由对自我意识的认知偏差和人际交往中的不合理信念引起的。",
+      "metadata": {
+        "document_title": "1例人际交往障碍心理咨询案例报告_李婕.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "贝克认知疗法核心干预流程",
+        "asset_type": "macro_protocol",
+        "granularity": "macro",
+        "asset_node_id": "session_framework",
+        "asset_path": "family_root/treatment_framework/session_framework",
+        "asset_level": 2,
+        "visible_role": "parent",
+        "objective": "在单次咨询中完成负性自动想法识别→证据检验→信念重构的完整认知干预循环",
+        "task_family": "认知行为疗法",
+        "method_family": "CBT",
+        "stage": "中期干预",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "48a529e2-c54f-5539-a9b4-56d20b7f68f8",
+        "window_strategy": "strict",
+        "anchor_hits": [],
+        "paragraph_start": 0,
+        "paragraph_end": 0,
+        "heading_path": [
+          "6.1贝克认知疗法"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例人际交往障碍心理咨询案例报告",
+          "1.1人口学资料",
+          "1.2个人成长史",
+          "1.3 精神状态",
+          "1.4身体状态",
+          "1.5 社会功能"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "贝克认知疗法认为，认知产生了情绪及行为，异常的认知产生了异常的情绪及行为。该疗法的核心是：找到影响来访者的功能失调性假设和负性自动想法[2]。本案例主要运用贝克的识别负性自动想法和矫正技术，查找负性假设和不合理信念。该来访者在经历两次高考失利的负性事件后，开始对周围人的态度格外敏感，产生了自己必须做到完美，否则就会被否定的负性假设。主要是由对自我意识的认知偏"
+      }
+    }
+  ]
+}

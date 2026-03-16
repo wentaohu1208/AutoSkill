@@ -1,0 +1,68 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "03dbb072-e4ce-5266-b616-48ed26dd8818",
+  "skill_name": "CBT咨询结束阶段标准化巩固流程",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "b259899f-646a-5e63-9d20-adb936dceb88",
+      "doc_id": "b5b97cc6-9ef0-573c-8d75-cca96570f3b1",
+      "document_title": "1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+      "section": "4.4 第四阶段：效果巩固，结束咨询（10～11次）",
+      "span": {
+        "start": 7315,
+        "end": 7543
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "巩固了前几个阶段的成果，调整了Z的核心信念，改善了其人际关系，减轻了其焦虑情绪，基本达到了之前的预期目标。在此阶段进行了问题的概念化，让Z了解成长经历对自己造成的影响自己有能力改变，同时在来访者在咨询过程中积极完成家庭作业并取得较好的结果给予充分肯定。并建议她在日后的学习生活中继续识别自身自动思维，采用与不合理的信念进行辩论的方法调整自己的认知；继续尝试现实暴露，不再回避让自己感到焦虑情绪的人际情境，如果不再回避，焦虑终将消退，生活、学习也将恢复常态。",
+      "metadata": {
+        "document_title": "1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "CBT咨询结束阶段标准化巩固流程",
+        "asset_type": "session_skill",
+        "granularity": "session",
+        "asset_node_id": "session_framework",
+        "asset_path": "family_root/treatment_framework/session_framework",
+        "asset_level": 2,
+        "visible_role": "parent",
+        "objective": "实现CBT干预效果的内化与泛化，支持来访者独立维持改善状态",
+        "task_family": "心理咨询",
+        "method_family": "CBT（认知行为疗法）",
+        "stage": "结束阶段",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "87da4e2b-1ea4-5ec7-83d2-d2ced0a7eb86",
+        "window_strategy": "strict",
+        "anchor_hits": [
+          "阶段",
+          "家庭作业",
+          "作业"
+        ],
+        "paragraph_start": 0,
+        "paragraph_end": 0,
+        "heading_path": [
+          "4.4 第四阶段：效果巩固，结束咨询（10～11次）"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例人际适应不良引发焦虑情绪咨询案例报告",
+          "1.1来访者基本信息",
+          "1.2对来访者的初始印象",
+          "1.3来访者主诉",
+          "1.4成长经历",
+          "1.5主要问题"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "巩固了前几个阶段的成果，调整了Z的核心信念，改善了其人际关系，减轻了其焦虑情绪，基本达到了之前的预期目标。在此阶段进行了问题的概念化，让Z了解成长经历对自己造成的影响自己有能力改变，同时在来访者在咨询过程中积极完成家庭作业并取得较好的结果给予充分肯定。并建议她在日后的学习生活中继续识别自身自动思维，采用与不合理的信念进行辩论的方法调整自己的认知；继续尝试现实"
+      }
+    }
+  ]
+}

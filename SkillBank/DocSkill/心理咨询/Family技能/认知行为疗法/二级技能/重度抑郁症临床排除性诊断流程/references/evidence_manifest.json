@@ -1,0 +1,64 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "6df450c6-f4c9-55b4-8da3-6cd01c773592",
+  "skill_name": "重度抑郁症临床排除性诊断流程",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "3d196a52-1b9a-578f-be67-decb240b477f",
+      "doc_id": "a4e0f4fc-2629-5879-8261-0e924c2c0418",
+      "document_title": "1例初中生抑郁症心理咨询案例_武香芝.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例初中生抑郁症心理咨询案例_武香芝.md",
+      "section": "2.2评估与诊断",
+      "span": {
+        "start": 1945,
+        "end": 2115
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "求助者意识清楚，定向力完整，接触尚可，对问话切题回答，未引出感知觉异常，无幻觉妄想内容，自知力完整，可以排除精神分裂症。\n\n根据HAMA测试报告，求助者没有焦虑状态，因此可以排除焦虑症。\n\n求助者情绪低落、哭泣、对学习无动力，连续2周睡眠质量下降，注意力不集中，快感缺失，甚至有过自杀行为。根据HAMD测试，总分45分，求助者为重度抑郁症。",
+      "metadata": {
+        "document_title": "1例初中生抑郁症心理咨询案例_武香芝.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "重度抑郁症临床排除性诊断流程",
+        "asset_type": "safety_rule",
+        "granularity": "session",
+        "asset_node_id": "session_framework",
+        "asset_path": "family_root/treatment_framework/session_framework",
+        "asset_level": 2,
+        "visible_role": "parent",
+        "objective": "完成CBT导向的重度抑郁症结构化诊断确认与共病排除",
+        "task_family": "assessment",
+        "method_family": "CBT",
+        "stage": "initial_assessment",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "acd5dfcc-eef6-57bf-80b6-8fd1ad8ccf54",
+        "window_strategy": "strict",
+        "anchor_hits": [],
+        "paragraph_start": 0,
+        "paragraph_end": 2,
+        "heading_path": [
+          "2.2评估与诊断"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例初中生抑郁症心理咨询案例",
+          "1.1求助者一般资料",
+          "1.2 主诉与个人陈述",
+          "1.3对个案初始印象",
+          "2.1心理测验结果",
+          "3.1理论依据"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "求助者意识清楚，定向力完整，接触尚可，对问话切题回答，未引出感知觉异常，无幻觉妄想内容，自知力完整，可以排除精神分裂症。"
+      }
+    }
+  ]
+}

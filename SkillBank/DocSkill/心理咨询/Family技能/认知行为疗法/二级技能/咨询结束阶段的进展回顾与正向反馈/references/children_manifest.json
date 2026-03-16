@@ -1,0 +1,35 @@
+{
+  "schema": "autoskill.document.parent_children_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "domain_root_name": "心理咨询",
+  "family_name": "认知行为疗法",
+  "profile_id": "psychology::认知行为疗法",
+  "taxonomy_axis": "疗法",
+  "parent_skill_id": "4e9fb7d1-414f-557d-bf71-cc3807c39bfc",
+  "parent_name": "咨询结束阶段的进展回顾与正向反馈",
+  "children": [
+    {
+      "skill_id": "d4a214a2-421f-5a6d-afcd-e284f41e69ce",
+      "name": "RET技能掌握度的临床确认与强化话术",
+      "description": "在CBT结束阶段，针对来访者已练习的理性情绪疗法（RET）技能，采用结构化反馈语言确认其掌握程度，并嵌入可迁移性提示以增强长期使用动机。",
+      "child_type": "心理咨询",
+      "asset_node_id": "micro_intervention",
+      "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+      "asset_level": 3,
+      "parent_skill_id": "4e9fb7d1-414f-557d-bf71-cc3807c39bfc",
+      "level_label": "微技能",
+      "taxonomy_class": "认知行为疗法",
+      "applicable_when": "在CBT结束阶段，针对来访者已练习的理性情绪疗法（RET）技能，采用结构化反馈语言确认其掌握程度，并嵌入可迁移性提示以增强长期使用动机。",
+      "selector_terms": [
+        "来访者报告成功应用RET调节情绪",
+        "RET作业完成且有具体案例支撑",
+        "RET",
+        "认知重构",
+        "家庭作业反馈",
+        "CBT",
+        "RET技能掌握度的临床确认与强化话术"
+      ],
+      "relative_path": "心理咨询/Family技能/认知行为疗法/微技能/RET技能掌握度的临床确认与强化话术/SKILL.md"
+    }
+  ]
+}

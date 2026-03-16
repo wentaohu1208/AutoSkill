@@ -1,0 +1,68 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "76f247de-7fe2-5b3b-90f5-ec56826e1c3c",
+  "skill_name": "ABC模型引导式信念辨析",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "d057c534-8d8e-58f0-9046-f20973f8c3a8",
+      "doc_id": "df0c1628-fa32-54ae-b861-2583ccd272f7",
+      "document_title": "1例一般心理问题咨询案例_马秀花.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例一般心理问题咨询案例_马秀花.md",
+      "section": "6.2第二次：心理咨询阶段",
+      "span": {
+        "start": 5097,
+        "end": 5623
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "（1）目的： $\\textcircled{1}$ 通过咨询，帮助咨询者认识到不合理的信念B是导致不良情绪及行为后果C的原因，而不是诱发事件A本身； $\\textcircled{2}$ 求助者应对自己的情绪和行为负责； $\\textcircled{3}$ 只有通过改变不合理信念，才能有效减轻或消除目前存在的各种心理症状。（2）方法：腹式呼吸放松法，合理情绪疗法，会谈法。（3）咨询过程： $\\textcircled{1}$ 反馈家庭作业：在上次咨询之后，明山认识到是由于自己的不合理认知导致了烦躁、疲惫，经常心神不定、局促不安等不良情绪，而不是未被实习企业留任这件事情。虽然意识到了问题的原因，但是内心的冲突还是无法排解。 $\\textcircled{2}$ 对于明山睡眠质量不佳的情况，将指导他用腹式呼吸放松法帮助他入睡。 $\\textcircled{3}$ 不合理信念分析：通过咨询过程，从明山经历的表面事件（未被实习企业留任，受到刺激），到现实中的问题（毕业想找到一份工作），明山的性格特点（敏感、自尊心强），对他的不合理信念进行了细致的分析，让他深刻认识到产生不良情绪的根本原因。具体对话过程如下。\n\n咨询师：未被实习企业留任的同学就只有您吗？",
+      "metadata": {
+        "document_title": "1例一般心理问题咨询案例_马秀花.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "ABC模型引导式信念辨析",
+        "asset_type": "session_skill",
+        "granularity": "session",
+        "asset_node_id": "session_framework",
+        "asset_path": "family_root/treatment_framework/session_framework",
+        "asset_level": 2,
+        "visible_role": "parent",
+        "objective": "帮助来访者建立‘信念中介’意识，为后续认知重评与行为实验奠定基础",
+        "task_family": "心理咨询",
+        "method_family": "CBT（认知行为疗法）",
+        "stage": "心理咨询中期（认知觉察阶段）",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "9ffe7f61-981e-5cc5-83b0-731e0435527b",
+        "window_strategy": "strict",
+        "anchor_hits": [
+          "会谈",
+          "家庭作业",
+          "作业"
+        ],
+        "paragraph_start": 0,
+        "paragraph_end": 1,
+        "heading_path": [
+          "6.2第二次：心理咨询阶段"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例一般心理问题咨询案例",
+          "1.1人口学资料",
+          "1.2个人成长史",
+          "2.1主诉",
+          "2.2个人陈述",
+          "3.1咨询前心理测验结果"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "（1）目的： $\\textcircled{1}$ 通过咨询，帮助咨询者认识到不合理的信念B是导致不良情绪及行为后果C的原因，而不是诱发事件A本身； $\\textcircled{2}$ 求助者应对自己的情绪和行为负责； $\\textcircled{3}$ 只有通过改变不合理信念，才能有效减轻或消除目前存在的各种心理症状。（2）方法：腹式呼吸放松法，合理情绪疗法"
+      }
+    }
+  ]
+}

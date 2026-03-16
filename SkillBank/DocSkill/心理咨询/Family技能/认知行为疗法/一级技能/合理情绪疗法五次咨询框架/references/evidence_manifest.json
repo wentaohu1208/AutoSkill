@@ -1,0 +1,64 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "3ed37d59-f198-5fde-8777-bedd4d369b5e",
+  "skill_name": "合理情绪疗法五次咨询框架",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "175710fe-c358-5985-af4a-c817e9ba843f",
+      "doc_id": "df0c1628-fa32-54ae-b861-2583ccd272f7",
+      "document_title": "1例一般心理问题咨询案例_马秀花.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例一般心理问题咨询案例_马秀花.md",
+      "section": "1例一般心理问题咨询案例",
+      "span": {
+        "start": 15,
+        "end": 332
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "马秀花\n\n济南市工业学校，山东 济南 250400\n\n[摘要］本文是一例学校大专毕业生在毕业择业前期，因未被实习企业留任出现烦躁、疲惫、心神不定等不良情绪的一般心理问题案例。通过摄入性谈话、收集资料等，对咨询者的问题进行详细分析并做出诊断，确定咨询者的问题为一般心理问题。在和咨询者进行沟通协商后，确定采用合理情绪疗法，循序渐进地帮助咨询者改变不合理的认知模式，从而改变不良情绪。经过五次咨询，咨询者改变了原有的不合理信念，以积极向上的崭新状态面对未被实习企业留任这件事情。\n\n[关键词]一般心理问题；不合理信念；合理情绪疗法[中图分类号]B84[文献标识码]A doi:10.19738/j.cnki.psy.2023.18.051",
+      "metadata": {
+        "document_title": "1例一般心理问题咨询案例_马秀花.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "合理情绪疗法五次咨询框架",
+        "asset_type": "macro_protocol",
+        "granularity": "macro",
+        "asset_node_id": "treatment_framework",
+        "asset_path": "family_root/treatment_framework",
+        "asset_level": 1,
+        "visible_role": "parent",
+        "objective": "系统性修正与替代非适应性核心信念，实现情绪调节与行为功能恢复",
+        "task_family": "心理咨询",
+        "method_family": "CBT",
+        "stage": "中期干预",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "71b7f000-1e4a-5283-afbe-e283405f98b6",
+        "window_strategy": "strict",
+        "anchor_hits": [],
+        "paragraph_start": 0,
+        "paragraph_end": 3,
+        "heading_path": [
+          "1例一般心理问题咨询案例"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1.1人口学资料",
+          "1.2个人成长史",
+          "2.1主诉",
+          "2.2个人陈述",
+          "3.1咨询前心理测验结果",
+          "3.2 咨询师观察"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "马秀花"
+      }
+    }
+  ]
+}

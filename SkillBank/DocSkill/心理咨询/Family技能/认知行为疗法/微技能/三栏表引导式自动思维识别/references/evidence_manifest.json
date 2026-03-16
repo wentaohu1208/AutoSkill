@@ -1,0 +1,64 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "65405bcf-cecc-50b5-91d3-9d17a11cc792",
+  "skill_name": "三栏表引导式自动思维识别",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "bf8bedd5-daa0-5d43-98d0-f7afd8bcdd21",
+      "doc_id": "b5b97cc6-9ef0-573c-8d75-cca96570f3b1",
+      "document_title": "1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+      "section": "4.2第二阶段：运用认知行为疗法改变来访者的不合理信念（第4～6次）",
+      "span": {
+        "start": 4156,
+        "end": 4282
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "咨询师：能具体说说她是怎么对待你的吗?\n\n小Z：周四那天她找我修电脑，我就帮她修了，修完之后还夸我说我的技术好，当时感觉她很开朗热情。可后来我主动和她说话，她就一副面无表情的样子，也不搭理我，我感觉她变脸变得太快了吧。\n\n咨询师：你感觉她变脸变得很快。",
+      "metadata": {
+        "document_title": "1例人际适应不良引发焦虑情绪咨询案例报告_张小梅.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "三栏表引导式自动思维识别",
+        "asset_type": "micro_skill",
+        "granularity": "micro",
+        "asset_node_id": "micro_intervention",
+        "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+        "asset_level": 3,
+        "visible_role": "leaf",
+        "objective": "识别并命名当前情境下的自动化负性思维",
+        "task_family": "cognitive_restructuring",
+        "method_family": "CBT",
+        "stage": "assessment_and_awareness",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "cab21e35-630a-5c5b-ba02-68c0e03552c6",
+        "window_strategy": "strict",
+        "anchor_hits": [],
+        "paragraph_start": 5,
+        "paragraph_end": 7,
+        "heading_path": [
+          "4.2第二阶段：运用认知行为疗法改变来访者的不合理信念（第4～6次）"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例人际适应不良引发焦虑情绪咨询案例报告",
+          "1.1来访者基本信息",
+          "1.2对来访者的初始印象",
+          "1.3来访者主诉",
+          "1.4成长经历",
+          "1.5主要问题"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "此阶段咨询的基本思路是：和Z共同讨论所列出的问题，发现来访者在说起某件事情时情绪仍然十分激动，讲完之后自己思路仍然感觉很混乱。在此契机下，采用三栏表向来访者较为详细地讲解情绪、自动思维和行为，并教Z练习填写三栏表。对所得出的自动思维找共同点，学习初步识别不良认知，该阶段的家庭作业为当来访者情绪不好时，通过记录三栏表（情境、自动思维、情绪）识别自动思维，并学会"
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "850cee10-b932-5667-8ff0-f9bcc6065d7f",
+  "skill_name": "ABC理论引导式信念识别与重构",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "3afe7155-0d0d-5301-b910-e90b663f9eb9",
+      "doc_id": "df0c1628-fa32-54ae-b861-2583ccd272f7",
+      "document_title": "1例一般心理问题咨询案例_马秀花.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例一般心理问题咨询案例_马秀花.md",
+      "section": "5.1主要咨询方法与适用原理",
+      "span": {
+        "start": 3771,
+        "end": 4147
+      },
+      "relation_type": "support",
+      "confidence": 0.95,
+      "quote": "5.1.1 主要咨询方法：合理情绪疗法。\n\n5.1.2 基本理论：合理情绪疗法的基本理论主要是由美国心理学家埃利斯创建的ABC理论。在情绪ABC理论中，A代表诱发性事件，B代表个体对该事件产生的一些信念，C代表个体产生的情绪和行为结果。人的情绪和行为反应与其对事物的想法和看法密切相关。合理的信念会引发适当和适度的情绪反应，而不合理的信念则会导致不恰当的情绪和行为反应。\n\n5.1.3本案例中的A、B、C：在观察和听取咨询者的陈述后，发现他持有一些不合理的信念，其中包括过于绝对化的观点（认为只有被实习企业留下才能算是成功），过度概括的评价（认为如果没有留在实习企业，就找不到其他工作），糟糕至极的结果（对不起父母，辜负了他们的期望）。这些错误的信念使他深陷消极情绪的困境中无法自拔。考虑到咨询者的个人年龄和文化水平，使用合理情绪疗法是更为适宜的方法。",
+      "metadata": {
+        "document_title": "1例一般心理问题咨询案例_马秀花.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "合理情绪疗法（ABC理论）框架",
+        "asset_type": "macro_protocol",
+        "granularity": "macro",
+        "asset_node_id": "treatment_framework",
+        "asset_path": "family_root/treatment_framework",
+        "asset_level": 1,
+        "visible_role": "parent",
+        "objective": "系统性识别并修正导致情绪障碍的核心非理性信念",
+        "task_family": "认知行为疗法",
+        "method_family": "CBT",
+        "stage": "assessment_and_formulation",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "547be0b0-b11a-5ae9-8dc0-6051e2c42659",
+        "window_strategy": "strict",
+        "anchor_hits": [],
+        "paragraph_start": 0,
+        "paragraph_end": 2,
+        "heading_path": [
+          "5.1主要咨询方法与适用原理"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例一般心理问题咨询案例",
+          "1.1人口学资料",
+          "1.2个人成长史",
+          "2.1主诉",
+          "2.2个人陈述",
+          "3.1咨询前心理测验结果"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "5.1.1 主要咨询方法：合理情绪疗法。"
+      }
+    }
+  ]
+}

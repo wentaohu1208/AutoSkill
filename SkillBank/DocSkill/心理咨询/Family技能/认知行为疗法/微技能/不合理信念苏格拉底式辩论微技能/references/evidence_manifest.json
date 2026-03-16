@@ -1,0 +1,69 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "e329c85e-2e88-5873-898b-b5446b901e35",
+  "skill_name": "不合理信念苏格拉底式辩论微技能",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "fa012c18-3335-56d8-980a-c7032c8d62d1",
+      "doc_id": "4b031c1d-9d0c-5b64-84cc-53e740c36640",
+      "document_title": "1例人际交往障碍心理咨询案例报告_李婕.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例人际交往障碍心理咨询案例报告_李婕.md",
+      "section": "7.2第二阶段：心理帮助阶段（第3～5次）",
+      "span": {
+        "start": 3968,
+        "end": 4588
+      },
+      "relation_type": "support",
+      "confidence": 0.97,
+      "quote": "（1）主要目标：通过合理情绪疗法中的与不合理信念辩论技术，配合来访者中心疗法，改善来访者的焦虑情绪，并对来访者的不合理信念进行矫正。（2）方法：会谈法、贝壳认知疗法、合理情绪疗法、来访者中心疗法。（3）主要过程： $\\textcircled{1}$ 巩固家庭作业。同来访者一起找到引起本人人际交往障碍的情境、自动思维、负性假设等。 $\\textcircled{2}$ 行为激活。回避、逃避和压抑加重了人际交往障碍的症状，鼓励来访者尝试积极应对的方式，主动交流，表达自己的诉求，看看是否会遭受到不公正的对待。 $\\textcircled{3}$ 识别负性自动想法。帮助来访者认识到目前的焦虑情绪，并非简单来自与家人或室友的矛盾，更多的是因为自己的负性自动想法和随之产生的不合理信念导致。 $\\textcircled{4}$ 认识自己的不合理信念，并加以矫正。让来访者对自己遇到的问题进行分析，找到分析过程中暴露的不合理的信念，尝试与自己的不合理信念进行辩论，体会合理信念的力量。 $\\textcircled{5}$ 运用来访者中心疗法技术，引导来访者关注自身的积极力量。通过引发来访者的自省功能，从具体事件入手，使来访者从关注他人的问题转移到自身行为上。在转换过程中，咨询师要鼓励来访者进行换位思考，体验理解和宽容他人的快乐。 $\\textcircled{6}$ 布置家庭作业。要求来访者找出与之产生矛盾的同学的五条优点，并主动与其进行沟通。",
+      "metadata": {
+        "document_title": "1例人际交往障碍心理咨询案例报告_李婕.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "不合理信念苏格拉底式辩论微技能",
+        "asset_type": "micro_skill",
+        "granularity": "micro",
+        "asset_node_id": "micro_intervention",
+        "asset_path": "family_root/treatment_framework/session_framework/micro_intervention",
+        "asset_level": 3,
+        "visible_role": "leaf",
+        "objective": "削弱不合理信念的认知黏着度，增强来访者元认知觉察与自我质疑能力",
+        "task_family": "心理咨询",
+        "method_family": "CBT",
+        "stage": "心理帮助阶段",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "8f3625fa-b48d-500a-ad9b-7405b7fae8cc",
+        "window_strategy": "strict",
+        "anchor_hits": [
+          "会谈",
+          "家庭作业",
+          "作业",
+          "行为激活"
+        ],
+        "paragraph_start": 0,
+        "paragraph_end": 0,
+        "heading_path": [
+          "7.2第二阶段：心理帮助阶段（第3～5次）"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例人际交往障碍心理咨询案例报告",
+          "1.1人口学资料",
+          "1.2个人成长史",
+          "1.3 精神状态",
+          "1.4身体状态",
+          "1.5 社会功能"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "（1）主要目标：通过合理情绪疗法中的与不合理信念辩论技术，配合来访者中心疗法，改善来访者的焦虑情绪，并对来访者的不合理信念进行矫正。（2）方法：会谈法、贝壳认知疗法、合理情绪疗法、来访者中心疗法。（3）主要过程： $\\textcircled{1}$ 巩固家庭作业。同来访者一起找到引起本人人际交往障碍的情境、自动思维、负性假设等。 $\\textcircled{"
+      }
+    }
+  ]
+}

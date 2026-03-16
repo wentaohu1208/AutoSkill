@@ -1,0 +1,64 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "723269b7-23a7-5e1a-9631-0b71b05cd4e0",
+  "skill_name": "抗抑郁药物协同治疗知情参考",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "f83ec44c-8967-5901-9622-02aae0740e78",
+      "doc_id": "a4e0f4fc-2629-5879-8261-0e924c2c0418",
+      "document_title": "1例初中生抑郁症心理咨询案例_武香芝.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例初中生抑郁症心理咨询案例_武香芝.md",
+      "section": "3.3 咨询方法",
+      "span": {
+        "start": 2555,
+        "end": 2917
+      },
+      "relation_type": "support",
+      "confidence": 0.89,
+      "quote": "3.3.1情绪宣泄疗法：求助者情绪低落，被老师批评，母亲打耳光，感到很委屈，所以考虑使用情绪宣泄治疗法。让其痛哭一场，缓解内心压力。\n\n3.3.2认知行为疗法：求助者认为父亲和母亲的婚姻是因为有了自己才维系下来，要是自己不存在，母亲就没有心理负担了，也不用经常想起那个“有罪”的父亲了。通过谈话告诉求助者：你的出生是父母爱情的结晶，对于母亲来说是非常幸福、快乐的事，虽然父亲在婚姻中有一定的过错，但是你是没有错的，而且你的母亲是非常爱你的。\n\n3.3.3辅助药物治疗：求助者情绪低落、失眠，可以求助精神科医生给予抗抑郁、抗失眠的药物。抗抑郁药物会有效改善求助者“生物学”方面的异常变化。目前大多数的抗抑郁药物都是通过改善脑内5-羟色胺、多巴胺和去肾上腺素等神经递质的功能来帮助求助者缓解抑郁症状。抗失眠的药物可有效改善睡眠。",
+      "metadata": {
+        "document_title": "1例初中生抑郁症心理咨询案例_武香芝.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "抗抑郁药物协同治疗知情参考",
+        "asset_type": "knowledge_reference",
+        "granularity": "session",
+        "asset_node_id": "",
+        "asset_path": "",
+        "asset_level": 0,
+        "visible_role": "",
+        "objective": "提升家庭对生物学干预的科学认知，降低治疗阻抗，支持精神科转介执行",
+        "task_family": "心理教育",
+        "method_family": "CBT（认知行为疗法）",
+        "stage": "评估与治疗规划期",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "508d4792-b734-5656-97f0-b92fab9d0a24",
+        "window_strategy": "strict",
+        "anchor_hits": [],
+        "paragraph_start": 0,
+        "paragraph_end": 2,
+        "heading_path": [
+          "3.3 咨询方法"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例初中生抑郁症心理咨询案例",
+          "1.1求助者一般资料",
+          "1.2 主诉与个人陈述",
+          "1.3对个案初始印象",
+          "2.1心理测验结果",
+          "2.2评估与诊断"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "3.3.1情绪宣泄疗法：求助者情绪低落，被老师批评，母亲打耳光，感到很委屈，所以考虑使用情绪宣泄治疗法。让其痛哭一场，缓解内心压力。"
+      }
+    }
+  ]
+}

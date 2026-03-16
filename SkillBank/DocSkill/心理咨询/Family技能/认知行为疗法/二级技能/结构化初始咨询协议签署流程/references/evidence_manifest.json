@@ -1,0 +1,66 @@
+{
+  "schema": "autoskill.document.evidence_manifest.v1",
+  "generated_at": "2026-03-16T06:14:36+00:00",
+  "family_name": "认知行为疗法",
+  "skill_id": "e1b14f12-c0e4-5d2c-a27c-4996b2363496",
+  "skill_name": "结构化初始咨询协议签署流程",
+  "support_count": 1,
+  "supports": [
+    {
+      "support_id": "45cfdd88-90ae-543e-ae00-d33e45f5973b",
+      "doc_id": "df0c1628-fa32-54ae-b861-2583ccd272f7",
+      "document_title": "1例一般心理问题咨询案例_马秀花.md",
+      "source_file": "/Users/jiezhou/Desktop/工作/其他/浦江/AutoSkill/data/Psych/Psy_markdown/cbt/1例一般心理问题咨询案例_马秀花.md",
+      "section": "5.2咨询时间安排",
+      "span": {
+        "start": 4162,
+        "end": 4356
+      },
+      "relation_type": "support",
+      "confidence": 0.98,
+      "quote": "根据评估结果以及初步确定的咨询目标，将与咨询者签订一份知情同意书（来访者须知）、咨询保密协议和生命安全承诺书。这将明确双方在咨询过程中的责任、权利和义务，并向咨询者详细说明涉及的保密原则及保密例外情况。对咨询时间及次数商定如下：咨询时间：每周1次，每次$5 0 \\mathrm { \\ m i n } { \\sim } 6 0 \\mathrm { \\ m i n }$ ；咨询次数：5次。",
+      "metadata": {
+        "document_title": "1例一般心理问题咨询案例_马秀花.md",
+        "domain": "psychology",
+        "extraction_unit": "window",
+        "skill_name": "结构化初始咨询协议签署流程",
+        "asset_type": "safety_rule",
+        "granularity": "session",
+        "asset_node_id": "session_framework",
+        "asset_path": "family_root/treatment_framework/session_framework",
+        "asset_level": 2,
+        "visible_role": "parent",
+        "objective": "建立合法、透明、安全的咨询契约关系，降低脱落风险，保障伦理合规与危机前置管理",
+        "task_family": "心理咨询设置",
+        "method_family": "CBT（认知行为疗法）",
+        "stage": "初始阶段",
+        "domain_type": "psychology",
+        "taxonomy_id": "psychology",
+        "window_id": "9a0226d9-d8f2-574f-97cb-2592af4e0eb7",
+        "window_strategy": "strict",
+        "anchor_hits": [
+          "咨询目标"
+        ],
+        "paragraph_start": 0,
+        "paragraph_end": 0,
+        "heading_path": [
+          "5.2咨询时间安排"
+        ],
+        "parent_heading": "",
+        "sibling_headings": [
+          "1例一般心理问题咨询案例",
+          "1.1人口学资料",
+          "1.2个人成长史",
+          "2.1主诉",
+          "2.2个人陈述",
+          "3.1咨询前心理测验结果"
+        ],
+        "subsection_headings": [],
+        "context_snippets": [],
+        "heading_number": "",
+        "heading_kind": "markdown",
+        "section_summary": "根据评估结果以及初步确定的咨询目标，将与咨询者签订一份知情同意书（来访者须知）、咨询保密协议和生命安全承诺书。这将明确双方在咨询过程中的责任、权利和义务，并向咨询者详细说明涉及的保密原则及保密例外情况。对咨询时间及次数商定如下：咨询时间：每周1次，每次$5 0 \\mathrm { \\ m i n } { \\sim } 6 0 \\mathrm { \\ m i"
+      }
+    }
+  ]
+}
