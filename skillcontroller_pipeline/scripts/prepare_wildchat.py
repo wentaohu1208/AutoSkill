@@ -56,6 +56,11 @@ def main(args: argparse.Namespace) -> None:
                 skipped += 1
                 continue
 
+            # Language filter
+            if args.language and row.get("language", "").lower() != args.language.lower():
+                skipped += 1
+                continue
+
             record = {"messages": messages}
             if row.get("model"):
                 record["model"] = row["model"]
@@ -73,6 +78,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_conversations", type=int, default=2000, help="Number of conversations to download")
     parser.add_argument("--output", type=str, default="data/wildchat_2000.jsonl", help="Output JSONL path")
     parser.add_argument("--no_filter", action="store_true", help="Don't filter single-turn conversations")
+    parser.add_argument("--language", type=str, default='English', help="Only keep conversations in this language (e.g. English)")
     parser.add_argument("--cache_dir", type=str, default="/data/hwt/hf_data", help="HuggingFace cache directory")
     return parser.parse_args()
 
