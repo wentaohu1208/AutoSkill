@@ -62,7 +62,7 @@ def main(args: argparse.Namespace) -> None:
             if row.get("language"):
                 record["language"] = row["language"]
 
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
             count += 1
 
     logger.info(f"Saved {count} conversations to {output_path} (skipped {skipped})")
