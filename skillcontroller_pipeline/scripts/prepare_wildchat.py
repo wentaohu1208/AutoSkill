@@ -30,6 +30,7 @@ def main(args: argparse.Namespace) -> None:
     ds = load_dataset(
         "allenai/WildChat-1M",
         split=f"train[:{args.num_conversations}]",
+        cache_dir=args.cache_dir,
     )
     logger.info(f"Loaded {len(ds)} conversations")
 
@@ -72,6 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_conversations", type=int, default=2000, help="Number of conversations to download")
     parser.add_argument("--output", type=str, default="data/wildchat_2000.jsonl", help="Output JSONL path")
     parser.add_argument("--no_filter", action="store_true", help="Don't filter single-turn conversations")
+    parser.add_argument("--cache_dir", type=str, default="/data/hwt/hf_data", help="HuggingFace cache directory")
     return parser.parse_args()
 
 
