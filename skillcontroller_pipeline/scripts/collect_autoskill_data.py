@@ -55,7 +55,9 @@ def build_sdk(args: argparse.Namespace, store_dir: str) -> "AutoSkill":
     if args.llm_provider == "generic":
         config_dict["llm"] = {
             "provider": "generic",
-            "model": os.environ.get("AUTOSKILL_GENERIC_LLM_MODEL", "deepseek-chat"),
+            "model": args.llm_model or os.environ.get("AUTOSKILL_GENERIC_LLM_MODEL", "deepseek-chat"),
+            "url": args.llm_url or os.environ.get("AUTOSKILL_GENERIC_LLM_URL", ""),
+            "api_key": args.llm_api_key or os.environ.get("AUTOSKILL_GENERIC_API_KEY", ""),
         }
     else:
         config_dict["llm"] = {"provider": args.llm_provider}
@@ -190,7 +192,9 @@ def parse_args() -> argparse.Namespace:
 
     # LLM config
     parser.add_argument("--llm_provider", type=str, default="generic", help="LLM provider")
-    parser.add_argument("--llm_model", type=str, default=None, help="LLM model name")
+    parser.add_argument("--llm_model", type=str, default="deepseek-chat", help="LLM model name")
+    parser.add_argument("--llm_url", type=str, default=None, help="LLM API URL (for generic provider)")
+    parser.add_argument("--llm_api_key", type=str, default=None, help="LLM API key (for generic provider)")
     parser.add_argument("--embeddings_provider", type=str, default="hashing", help="Embeddings provider")
     parser.add_argument("--embeddings_model", type=str, default=None, help="Embeddings model name")
 
