@@ -281,7 +281,7 @@ def label_all_transitions(
         t["label"] = label
         stats[label] += 1
 
-        if (i + 1) % 50 == 0:
+        if (i + 1) % 1 == 0:
             logger.info(f"  Labeled {i+1}/{len(transitions)}: {stats}")
 
     logger.info(f"Labeling complete: {stats}")
