@@ -99,7 +99,7 @@ def _export_candidate_as_skill_md(candidate: Dict[str, Any], output_dir: str) ->
     frontmatter = (
         f"---\n"
         f"name: {name}\n"
-        f'description: "{description[:200]}"\n'
+        f'description: "{description}"\n'
         f"---\n\n"
     )
 
