@@ -1,5 +1,5 @@
 python -m skillcontroller_pipeline.scripts.collect_autoskill_data \
-    --input data/wildchat_sample.jsonl \
+    --input data/wildchat_1000.jsonl \
     --output_dir data/autoskill_transitions \
     --num_runs 1 \
     --llm_model deepseek-chat \

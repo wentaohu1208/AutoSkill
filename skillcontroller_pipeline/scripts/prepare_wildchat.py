@@ -75,8 +75,8 @@ def main(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare WildChat data for AutoSkill")
-    parser.add_argument("--num_conversations", type=int, default=2000, help="Number of conversations to download")
-    parser.add_argument("--output", type=str, default="data/wildchat_2000.jsonl", help="Output JSONL path")
+    parser.add_argument("--num_conversations", type=int, default=1000, help="Number of conversations to download")
+    parser.add_argument("--output", type=str, default="data/wildchat_1000.jsonl", help="Output JSONL path")
     parser.add_argument("--no_filter", action="store_true", help="Don't filter single-turn conversations")
     parser.add_argument("--language", type=str, default='English', help="Only keep conversations in this language (e.g. English)")
     parser.add_argument("--cache_dir", type=str, default="/data/hwt/hf_data", help="HuggingFace cache directory")
