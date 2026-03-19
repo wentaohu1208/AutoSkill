@@ -65,12 +65,7 @@ def main(args: argparse.Namespace) -> None:
     logger.info(f"Total transitions: {len(transitions)}")
 
     # 2. Initialize SkillNet evaluator
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "SkillNet" / "skillnet-ai" / "src"))
-    # Also try the local SkillNet path
-    skillnet_path = args.skillnet_path or "/Users/wentaohu/project/SkillNet/skillnet-ai/src"
-    if skillnet_path not in sys.path:
-        sys.path.insert(0, skillnet_path)
-
+    # pip install skillnet-ai
     from skillnet_ai.evaluator import SkillEvaluator, EvaluatorConfig
 
     config = EvaluatorConfig(
@@ -133,7 +128,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", type=str, default="deepseek-chat", help="LLM model for evaluation")
     parser.add_argument("--similarity_threshold", type=float, default=0.7, help="Threshold for discard labeling")
     parser.add_argument("--cache_dir", type=str, default="/tmp/skillnet_eval_cache", help="Temp dir for SKILL.md")
-    parser.add_argument("--skillnet_path", type=str, default=None, help="Path to SkillNet skillnet-ai/src")
     return parser.parse_args()
 
 
