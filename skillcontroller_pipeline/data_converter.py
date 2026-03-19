@@ -143,32 +143,34 @@ class DataConverter:
             similar_lines.append(f"  {h['skill_name']} (score={h['score']:.2f}, v{h['skill_version']})")
         similar_text = "\n".join(similar_lines) if similar_lines else "  (none)"
 
+        # Candidate fields
+        triggers = candidate.get("triggers", [])
+        triggers_text = ", ".join(triggers) if triggers else "(none)"
+        tags = candidate.get("tags", [])
+        tags_text = ", ".join(tags) if tags else "(none)"
+        instructions = candidate.get("instructions", "")
+
         prompt = (
             f"Current Skill Bank ({len(bank)} skills):\n"
             f"{bank_text}\n\n"
             f"Candidate Skill:\n"
             f"  Name: {candidate.get('name', '')}\n"
-            f"  Description: {candidate.get('description', '')[:]}\n"
+            f"  Description: {candidate.get('description', '')}\n"
             f"  Confidence: {candidate.get('confidence', 0):.2f}\n"
-            f"  Triggers: {', '.join(candidate.get('triggers', []))}\n\n"
+            f"  Triggers: {triggers_text}\n"
+            f"  Tags: {tags_text}\n"
+            f"  Instructions: {instructions}\n\n"
             f"Most Similar Existing Skills:\n"
             f"{similar_text}\n\n"
             f"Decide: add, merge, or discard?"
         )
-        # import pdb;pdb.set_trace()
         return prompt
 
     @staticmethod
     def _build_completion(record: Dict[str, Any]) -> str:
         """Build JSON completion from transition record."""
         action = record["action"]
-        target = record.get("target_skill_id")
-
-        completion = {"operation": action}
-        if target:
-            completion["target_skill_id"] = target
-
-        return json.dumps(completion, ensure_ascii=False)
+        return json.dumps({"operation": action}, ensure_ascii=False)
 
     @staticmethod
     def _save_jsonl(data: List[Dict[str, Any]], path: Path) -> None:
