@@ -2,13 +2,20 @@
 
 Supports two output formats:
 - MLP format: numerical features + action label
-- LM format: text prompt + JSON completion
+- LM format: text prompt + JSON completion (pure 3-class decision)
+
+Prompt design:
+- Skill bank: name + description per skill (one line each)
+- Candidate: full info (name, description, instructions, triggers, tags, confidence)
+- Optional context: similar_hits (may be absent in other frameworks)
+- Training-time dropout: randomly drop optional fields for cross-framework generality
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -16,12 +23,18 @@ from .feature_extractor import FeatureExtractor
 
 logger = logging.getLogger(__name__)
 
+# Optional fields that may not exist in other frameworks
+OPTIONAL_FIELDS = ["instructions", "triggers", "tags", "confidence"]
+DEFAULT_DROPOUT_RATE = 0.3
+
 
 class DataConverter:
     """Convert InstrumentedAutoSkill transitions to training data."""
 
-    def __init__(self) -> None:
+    def __init__(self, dropout_rate: float = DEFAULT_DROPOUT_RATE, seed: int = 42) -> None:
         self.extractor = FeatureExtractor()
+        self.dropout_rate = dropout_rate
+        self.rng = random.Random(seed)
 
     def convert_all(
         self,
@@ -29,16 +42,7 @@ class DataConverter:
         output_dir: str | Path,
         formats: List[str] = ("mlp", "lm"),
     ) -> Dict[str, Path]:
-        """Convert all transitions and save to files.
-
-        Args:
-            transitions: List of transition records from InstrumentedAutoSkill.
-            output_dir: Directory to save output files.
-            formats: Which formats to generate ("mlp", "lm", or both).
-
-        Returns:
-            Mapping from format name to output file path.
-        """
+        """Convert all transitions and save to files."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         results = {}
@@ -60,17 +64,7 @@ class DataConverter:
         return results
 
     def _to_mlp_format(self, transitions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Convert to MLP training format: features + action.
-
-        Each sample:
-        {
-            "features": {"top1_similarity": 0.92, ...},
-            "action": "merge",
-            "action_id": 1,
-            "target_skill_id": "sk_001",
-            "outcome": {"delta_performance": null}
-        }
-        """
+        """Convert to MLP training format: features + action."""
         samples = []
         history: List[Dict[str, Any]] = []
 
@@ -82,7 +76,6 @@ class DataConverter:
                 "features": features,
                 "action": record["action"],
                 "action_id": {"add": 0, "merge": 1, "discard": 2}.get(record["action"], -1),
-                "target_skill_id": record.get("target_skill_id"),
                 "outcome": {
                     "delta_performance": record.get("delta_performance"),
                     "delta_token_usage": record.get("delta_token_usage"),
@@ -94,16 +87,7 @@ class DataConverter:
         return samples
 
     def _to_lm_format(self, transitions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Convert to LM training format: text prompt + JSON completion.
-
-        Each sample:
-        {
-            "prompt": "Current Skill Bank (15 nodes):\n...\nCandidate: ...",
-            "completion": '{"operation": "merge", "target": "sk_001"}',
-            "action": "merge",
-            "outcome": {...}
-        }
-        """
+        """Convert to LM training format: text prompt + JSON completion."""
         samples = []
 
         for record in transitions:
@@ -124,51 +108,83 @@ class DataConverter:
 
         return samples
 
-    @staticmethod
-    def _build_prompt(record: Dict[str, Any]) -> str:
-        """Build text prompt from transition record."""
+    def _build_prompt(self, record: Dict[str, Any]) -> str:
+        """Build text prompt from transition record.
+
+        Structure:
+        1. Skill Bank: name + description per skill
+        2. Candidate: full info (with optional field dropout)
+        3. Optional Context: similar_hits
+        """
         bank = record.get("skill_bank_before", [])
         candidate = record.get("candidate", {})
         similar = record.get("similar_hits", [])
 
-        # Skill bank summary
+        # --- 1. Skill Bank: name + description ---
         bank_lines = []
-        for s in bank:
-            bank_lines.append(f"  [{s['id'][:8]}] {s['name']} (v{s['version']})")
+        for i, s in enumerate(bank, 1):
+            desc = s.get("description", "")
+            bank_lines.append(f"  [{i}] {s['name']}: {desc}")
         bank_text = "\n".join(bank_lines) if bank_lines else "  (empty)"
 
-        # Similar hits
-        similar_lines = []
-        for h in similar[:3]:
-            similar_lines.append(f"  {h['skill_name']} (score={h['score']:.2f}, v{h['skill_version']})")
-        similar_text = "\n".join(similar_lines) if similar_lines else "  (none)"
+        # --- 2. Candidate: full info with dropout ---
+        candidate_lines = [
+            f"  Name: {candidate.get('name', '')}",
+            f"  Description: {candidate.get('description', '')}",
+        ]
 
-        # Candidate fields
-        triggers = candidate.get("triggers", [])
-        triggers_text = ", ".join(triggers) if triggers else "(none)"
-        tags = candidate.get("tags", [])
-        tags_text = ", ".join(tags) if tags else "(none)"
+        # Optional fields — randomly dropout for cross-framework generality
         instructions = candidate.get("instructions", "")
+        if instructions and self.rng.random() > self.dropout_rate:
+            candidate_lines.append(f"  Instructions: {instructions}")
 
-        prompt = (
-            f"Current Skill Bank ({len(bank)} skills):\n"
-            f"{bank_text}\n\n"
-            f"Candidate Skill:\n"
-            f"  Name: {candidate.get('name', '')}\n"
-            f"  Description: {candidate.get('description', '')}\n"
-            f"  Confidence: {candidate.get('confidence', 0):.2f}\n"
-            f"  Triggers: {triggers_text}\n"
-            f"  Tags: {tags_text}\n"
-            f"  Instructions: {instructions}\n\n"
-            f"Most Similar Existing Skills:\n"
-            f"{similar_text}\n\n"
-            f"Decide: add, merge, or discard?"
-        )
-        return prompt
+        triggers = candidate.get("triggers", [])
+        if triggers and self.rng.random() > self.dropout_rate:
+            candidate_lines.append(f"  Triggers: {', '.join(triggers)}")
+
+        tags = candidate.get("tags", [])
+        if tags and self.rng.random() > self.dropout_rate:
+            candidate_lines.append(f"  Tags: {', '.join(tags)}")
+
+        confidence = candidate.get("confidence")
+        if confidence is not None and self.rng.random() > self.dropout_rate:
+            candidate_lines.append(f"  Confidence: {confidence:.2f}")
+
+        candidate_text = "\n".join(candidate_lines)
+
+        # --- 3. Optional Context: similar_hits ---
+        optional_lines = []
+        if similar and self.rng.random() > self.dropout_rate:
+            similar_entries = []
+            for h in similar[:3]:
+                similar_entries.append(f"  {h['skill_name']} (score={h['score']:.2f}, v{h['skill_version']})")
+            optional_lines.append("Optional Context:")
+            optional_lines.append("  Most Similar Existing Skills:")
+            optional_lines.extend([f"  {e}" for e in similar_entries])
+
+        optional_text = "\n".join(optional_lines) if optional_lines else ""
+
+        # --- Assemble prompt ---
+        parts = [
+            f"Current Skill Bank ({len(bank)} skills):",
+            bank_text,
+            "",
+            "Candidate Skill:",
+            candidate_text,
+        ]
+
+        if optional_text:
+            parts.append("")
+            parts.append(optional_text)
+
+        parts.append("")
+        parts.append("Decide: add, merge, or discard?")
+
+        return "\n".join(parts)
 
     @staticmethod
     def _build_completion(record: Dict[str, Any]) -> str:
-        """Build JSON completion from transition record."""
+        """Build JSON completion — pure 3-class decision, no skill content."""
         action = record["action"]
         return json.dumps({"operation": action}, ensure_ascii=False)
 
