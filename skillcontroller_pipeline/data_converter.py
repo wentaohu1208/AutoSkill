@@ -148,13 +148,14 @@ class DataConverter:
             f"{bank_text}\n\n"
             f"Candidate Skill:\n"
             f"  Name: {candidate.get('name', '')}\n"
-            f"  Description: {candidate.get('description', '')[:200]}\n"
+            f"  Description: {candidate.get('description', '')[:]}\n"
             f"  Confidence: {candidate.get('confidence', 0):.2f}\n"
             f"  Triggers: {', '.join(candidate.get('triggers', [])[:3])}\n\n"
             f"Most Similar Existing Skills:\n"
             f"{similar_text}\n\n"
             f"Decide: add, merge, or discard?"
         )
+        # import pdb;pdb.set_trace()
         return prompt
 
     @staticmethod
