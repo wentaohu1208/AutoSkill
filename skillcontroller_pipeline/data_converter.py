@@ -128,15 +128,14 @@ class DataConverter:
         bank_text = "\n".join(bank_lines) if bank_lines else "  (empty)"
 
         # --- 2. Candidate: full info with dropout ---
+        # Required fields (Agent Skills standard: name, description, instructions)
         candidate_lines = [
             f"  Name: {candidate.get('name', '')}",
             f"  Description: {candidate.get('description', '')}",
+            f"  Instructions: {candidate.get('instructions', '')}",
         ]
 
         # Optional fields — randomly dropout for cross-framework generality
-        instructions = candidate.get("instructions", "")
-        if instructions and self.rng.random() > self.dropout_rate:
-            candidate_lines.append(f"  Instructions: {instructions}")
 
         triggers = candidate.get("triggers", [])
         if triggers and self.rng.random() > self.dropout_rate:
