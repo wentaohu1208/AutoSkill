@@ -28,6 +28,33 @@ POOR = "Poor"
 DIMENSIONS = ["safety", "completeness", "executability", "maintainability", "cost_awareness"]
 
 
+def _check_high_quality(levels: Dict[str, str]) -> tuple[bool, str]:
+    """Layered quality gate with priority.
+
+    Layer 1 (Safety red line): Safety=Poor → reject
+    Layer 2 (Usability): Completeness=Poor or Executability=Poor → reject
+    Layer 3 (Engineering): Maintainability+Cost both Poor → reject
+
+    Returns:
+        (is_high_quality, reject_reason)
+    """
+    # Layer 1: Safety red line
+    if levels.get("safety") == POOR:
+        return False, "safety_poor"
+
+    # Layer 2: Usability — agent must be able to understand and execute
+    if levels.get("completeness") == POOR:
+        return False, "completeness_poor"
+    if levels.get("executability") == POOR:
+        return False, "executability_poor"
+
+    # Layer 3: Engineering quality — tolerate one Poor, reject both
+    if levels.get("maintainability") == POOR and levels.get("cost_awareness") == POOR:
+        return False, "maintainability_and_cost_both_poor"
+
+    return True, ""
+
+
 @dataclass
 class QualityResult:
     """Result of SkillNet five-dimension evaluation."""
@@ -36,7 +63,8 @@ class QualityResult:
     reasons: Dict[str, str]  # dimension -> reason text
     poor_count: int
     good_count: int
-    is_high_quality: bool  # True if poor_count < 2
+    is_high_quality: bool
+    reject_reason: str  # why rejected, empty if high quality
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -45,6 +73,7 @@ class QualityResult:
             "poor_count": self.poor_count,
             "good_count": self.good_count,
             "is_high_quality": self.is_high_quality,
+            "reject_reason": self.reject_reason,
         }
 
 
@@ -128,6 +157,7 @@ def evaluate_candidate(
                 poor_count=0,
                 good_count=0,
                 is_high_quality=True,  # 评估失败时不拦截
+                reject_reason="",
             )
 
         # Run SkillNet evaluate
@@ -147,13 +177,15 @@ def evaluate_candidate(
 
         poor_count = sum(1 for v in levels.values() if v == POOR)
         good_count = sum(1 for v in levels.values() if v == GOOD)
+        is_hq, reject_reason = _check_high_quality(levels)
 
         return QualityResult(
             levels=levels,
             reasons=reasons,
             poor_count=poor_count,
             good_count=good_count,
-            is_high_quality=(poor_count < 2),
+            is_high_quality=is_hq,
+            reject_reason=reject_reason,
         )
 
     except Exception as e:
@@ -163,7 +195,8 @@ def evaluate_candidate(
             reasons={d: f"error: {e}" for d in DIMENSIONS},
             poor_count=0,
             good_count=0,
-            is_high_quality=True,
+            is_high_quality=True,  # 评估失败时不拦截
+            reject_reason="",
         )
 
     finally:
