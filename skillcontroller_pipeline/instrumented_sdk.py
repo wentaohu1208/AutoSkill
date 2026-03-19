@@ -103,7 +103,7 @@ class InstrumentedAutoSkill:
             "candidate": {
                 "name": getattr(cand, "name", ""),
                 "description": getattr(cand, "description", ""),
-                "instructions": getattr(cand, "instructions", "")[:500],
+                "instructions": getattr(cand, "instructions", ""),
                 "triggers": list(getattr(cand, "triggers", []) or []),
                 "tags": list(getattr(cand, "tags", []) or []),
                 "confidence": float(getattr(cand, "confidence", 0.0) or 0.0),
