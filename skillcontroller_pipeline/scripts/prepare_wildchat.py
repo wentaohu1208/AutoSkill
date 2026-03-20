@@ -12,10 +12,20 @@ import argparse
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def _is_mostly_english(text: str, threshold: float = 0.7) -> bool:
+    """Check if text is mostly English (ASCII letters)."""
+    ascii_chars = len(re.findall(r'[a-zA-Z]', text))
+    total_chars = len(text.strip())
+    if total_chars == 0:
+        return False
+    return ascii_chars / total_chars > threshold
 
 
 def main(args: argparse.Namespace) -> None:
@@ -57,9 +67,26 @@ def main(args: argparse.Namespace) -> None:
                 continue
 
             # Language filter
-            if args.language and row.get("language", "").lower() != args.language.lower():
-                skipped += 1
-                continue
+            if args.language:
+                lang = args.language
+                # English_pure: check every user message is mostly ASCII
+                if lang.lower() == "english_pure":
+                    if row.get("language", "").lower() != "english":
+                        skipped += 1
+                        continue
+                    # Check all user messages are mostly English
+                    all_english = all(
+                        _is_mostly_english(m.get("content", ""))
+                        for m in messages if m.get("role") == "user" and m.get("content")
+                    )
+                    if not all_english:
+                        skipped += 1
+                        continue
+                else:
+                    # Normal: just match the language label
+                    if row.get("language", "").lower() != lang.lower():
+                        skipped += 1
+                        continue
 
             record = {"messages": messages}
             if row.get("model"):
