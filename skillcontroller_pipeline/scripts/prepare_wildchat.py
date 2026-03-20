@@ -46,7 +46,7 @@ def main(args: argparse.Namespace) -> None:
 
             # Filter: only keep conversations with user feedback/constraints
             # (these are more likely to produce meaningful skills)
-            has_multi_turn = len(messages) >= 4
+            has_multi_turn = len(messages) >= args.min_turns
             has_user_correction = any(
                 m.get("role") == "user" and i > 1
                 for i, m in enumerate(messages)
@@ -78,6 +78,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_conversations", type=int, default=1000, help="Number of conversations to download")
     parser.add_argument("--output", type=str, default="data/wildchat_1000.jsonl", help="Output JSONL path")
     parser.add_argument("--no_filter", action="store_true", help="Don't filter single-turn conversations")
+    parser.add_argument("--min_turns", type=int, default=4, help="Minimum number of messages to keep (default 4 = 2 turns)")
     parser.add_argument("--language", type=str, default='English', help="Only keep conversations in this language (e.g. English)")
     parser.add_argument("--cache_dir", type=str, default="/data/hwt/hf_data", help="HuggingFace cache directory")
     return parser.parse_args()
